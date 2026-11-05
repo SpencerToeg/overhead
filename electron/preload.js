@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('blockwiseHost', {
   platform: process.platform,
   version: ipcRenderer.sendSync('app:version'),
+  updatedFrom: () => ipcRenderer.sendSync('app:updatedFrom'),
   list: () => ipcRenderer.sendSync('lib:list'),
   isNewFolder: () => ipcRenderer.sendSync('lib:isNew'),
   folder: () => ipcRenderer.sendSync('lib:folder'),

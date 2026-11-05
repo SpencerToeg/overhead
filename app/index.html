@@ -2168,6 +2168,7 @@ function refreshAll() {
 loadLibrary();
 buildChrome();
 setView('home');
+if (host && host.updatedFrom && host.updatedFrom()) setTimeout(() => toast(`Updated to Blockwise ${host.version}`), 400);
 new ResizeObserver(() => renderCanvas()).observe(svg);
 </script>
 </body>

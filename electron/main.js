@@ -90,6 +90,9 @@ function writeProject(p) {
 
 // ---------- bridge for app/index.html (see preload.js) ----------
 ipcMain.on('app:version', e => { e.returnValue = app.getVersion(); });
+// the version that ran last time, if it was a different one (so the app can say "Updated to …")
+let updatedFrom = null;
+ipcMain.on('app:updatedFrom', e => { e.returnValue = updatedFrom; updatedFrom = null; });
 ipcMain.on('lib:list', e => { try { e.returnValue = scan(); } catch { e.returnValue = []; } });
 ipcMain.on('lib:isNew', e => { e.returnValue = newFolder; newFolder = false; });
 ipcMain.on('lib:folder', e => { e.returnValue = libDir(); });
@@ -179,7 +182,10 @@ if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
   app.whenReady().then(() => {
-    loadSettings(); libDir(); buildMenu(); createWindow(); setupUpdates();
+    loadSettings();
+    if (settings.lastVersion && settings.lastVersion !== app.getVersion()) updatedFrom = settings.lastVersion;
+    settings.lastVersion = app.getVersion(); saveSettings();
+    libDir(); buildMenu(); createWindow(); setupUpdates();
     app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
   });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

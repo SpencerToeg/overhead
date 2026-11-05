@@ -37,3 +37,9 @@ npm run build:win    # build a Windows installer locally into dist/
 GitHub Actions then builds both installers and publishes a release. Installed copies on Windows find it within a few hours, or the next time they're launched. They download it and offer **Restart now**. If you choose to wait, it installs the next time you quit.
 
 **Mac note:** without an Apple Developer ID ($99/yr), the Mac app is unsigned. The first time you open it, right-click it and choose Open. macOS also only allows automatic updates for signed apps, so on Mac you download each new version from the GitHub release page. Your library folder is kept.
+
+## Installing on a new Windows PC
+
+- **Smart App Control off (most PCs):** download `Overhead-Setup-x.y.z.exe` from the latest release. If Windows shows "Windows protected your PC", click **More info**, then **Run anyway**.
+- **Smart App Control on:** Windows blocks unsigned installers downloaded from the internet. Build the installer on that PC instead: install Node.js LTS, run `npm ci`, then `npm run build:win`, and run `dist\Overhead Setup x.y.z.exe`. Updates still install themselves after that.
+- Code signing (Microsoft Artifact Signing, about $10/month) would remove both workarounds. It plugs into `win.azureSignOptions` in `package.json` and the release workflow.

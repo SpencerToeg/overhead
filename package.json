@@ -1,9 +1,9 @@
 {
-  "name": "blockwise",
-  "productName": "Blockwise",
+  "name": "overhead",
+  "productName": "Overhead",
   "version": "0.1.0",
   "description": "Plan scenes, blocking and shots from above.",
-  "author": "Blockwise",
+  "author": "Overhead",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -12,8 +12,8 @@
     "build:mac": "electron-builder --mac --publish never"
   },
   "build": {
-    "appId": "com.blockwise.app",
-    "productName": "Blockwise",
+    "appId": "com.overhead.app",
+    "productName": "Overhead",
     "files": [
       "app/**",
       "electron/**",
@@ -58,7 +58,7 @@
     "publish": {
       "provider": "github",
       "owner": "set-by-github-actions",
-      "repo": "blockwise",
+      "repo": "overhead",
       "releaseType": "release"
     }
   },

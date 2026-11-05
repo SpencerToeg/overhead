@@ -1,4 +1,4 @@
-# Blockwise
+# Overhead
 
 Top-down scene, blocking and shot planner for Windows and Mac.
 
@@ -8,17 +8,17 @@ Top-down scene, blocking and shot planner for Windows and Mac.
 |---|---|
 | `app/index.html` | The whole app (UI, drawing, scenes, shots). Most bug fixes and features happen here. |
 | `electron/main.js` | Desktop shell: window, library folder, file saving, backups, auto-update. |
-| `electron/preload.js` | The small bridge between the two (`window.blockwiseHost`). |
+| `electron/preload.js` | The small bridge between the two (`window.overheadHost`). |
 | `build/icon.png` | App icon (1024×1024). Replace it to change the icon. |
 | `.github/workflows/release.yml` | Builds the Windows and Mac apps on GitHub and publishes updates. |
 
 ## Where your work is saved, and why updates never break it
 
-- Projects are plain files, one per project: `<Project name>.blockwise.json`. They live in the **library folder** (default `Documents\Blockwise`). You can change it from the bottom of the Projects screen. Like an Obsidian vault, you can put it in OneDrive or Dropbox, copy files in and out, or back the folder up.
+- Projects are plain files, one per project: `<Project name>.overhead.json`. They live in the **library folder** (default `Documents\Overhead`). You can change it from the bottom of the Projects screen. Like an Obsidian vault, you can put it in OneDrive or Dropbox, copy files in and out, or back the folder up.
 - The app is installed separately from the library folder. An update replaces the app only. It never touches your library.
 - Each project is backed up to `.backups` inside the library folder the first time you save it after launching the app. The last 20 backups per project are kept.
 - Every project file stores a format `version`. When the file format changes, bump `FORMAT` in `app/index.html` and add the conversion to `normalizeProject()`. Older files are then upgraded automatically when they're opened, so nothing has to be remade.
-- **Never change `appId` (`com.blockwise.app`) or `productName`** in `package.json`. Updates and settings are tied to them.
+- **Never change `appId` (`com.overhead.app`) or `productName`** in `package.json`. Updates and settings are tied to them.
 
 ## Day-to-day
 

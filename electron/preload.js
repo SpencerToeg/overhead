@@ -1,7 +1,7 @@
 // The only things app/index.html can do outside its window. Everything else stays sandboxed.
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('blockwiseHost', {
+contextBridge.exposeInMainWorld('overheadHost', {
   platform: process.platform,
   version: ipcRenderer.sendSync('app:version'),
   updatedFrom: () => ipcRenderer.sendSync('app:updatedFrom'),

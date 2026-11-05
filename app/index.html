@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Blockwise</title>
+<title>Overhead</title>
 <style>
 :root{
   --bg:#0e1014; --panel:#15181e; --panel2:#1b1f27; --hover:#222733; --line:#252a34; --line2:#313745;
@@ -242,7 +242,7 @@ td.desc{max-width:420px;color:var(--muted)}
 <body>
 <div id="app" class="home">
   <header>
-    <div class="brand" id="brand" title="All projects"><div class="mark"><svg width="12" height="12" viewBox="0 0 24 24" fill="#0b1020"><path d="M12 22 3 5a11 11 0 0 1 18 0z"/></svg></div>Blockwise</div>
+    <div class="brand" id="brand" title="All projects"><div class="mark"><svg width="12" height="12" viewBox="0 0 24 24" fill="#0b1020"><path d="M12 22 3 5a11 11 0 0 1 18 0z"/></svg></div>Overhead</div>
     <div class="crumbs proj-only"><span class="slash">/</span><button class="crumb" id="bHome"></button><span class="slash">/</span><input id="projName" spellcheck="false" title="Project name"></div>
     <div class="seg proj-only">
       <button data-view="diagram" class="on"></button>
@@ -410,7 +410,7 @@ function makeObject(type, kind, x, y, sc = scene()) {
 function demoProject() {
   const s1 = { id:uid(), name:'INT. KITCHEN – NIGHT', notes:'Maya waits for Leo. He brings bad news.', objects:[], shots:[], open:true };
   const s2 = { id:uid(), name:'EXT. STREET – NIGHT', notes:'', objects:[], shots:[], open:true };
-  const p = { app:'blockwise', version:2, id:uid(), name:'The News (sample)', scenes:[s1,s2] };
+  const p = { app:'overhead', version:2, id:uid(), name:'The News (sample)', scenes:[s1,s2] };
   const P = (kind,x,y,rot=0,extra={}) => { const o = makeObject('prop',kind,x,y,s1); Object.assign(o,{rot},extra); s1.objects.push(o); return o; };
   P('walls',0,0,0,{ name:'Kitchen', closed:true, pts:[{x:-200,y:-150},{x:200,y:-150},{x:200,y:150},{x:-200,y:150}] });
   P('door',120,150,0,{h:12}); P('window',-60,-150,0,{w:90,h:12});
@@ -440,11 +440,11 @@ function demoProject() {
 }
 
 // ---------- project library ----------
-// Desktop app: each project is a "<name>.blockwise.json" file in the library folder the user picks (like an Obsidian vault).
+// Desktop app: each project is a "<name>.overhead.json" file in the library folder the user picks (like an Obsidian vault).
 // Browser preview: falls back to localStorage.
-const host = window.blockwiseHost || null;
+const host = window.overheadHost || null;
 const FORMAT = 2;   // bump when the project file shape changes, and add the migration to normalizeProject
-const LIB_KEY = 'blockwise.library', PKEY = id => 'blockwise.p.' + id;
+const LIB_KEY = 'overhead.library', PKEY = id => 'overhead.p.' + id;
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 const lsDel = k => { try { localStorage.removeItem(k); } catch (e) {} };
@@ -453,8 +453,8 @@ const projCache = {};
 const validProject = p => p && Array.isArray(p.scenes) && p.scenes.length && p.scenes.every(s=>Array.isArray(s.objects)&&Array.isArray(s.shots));
 // bring older files up to the current shape (multi-point arrows, locations)
 function normalizeProject(p) {
-  if ((p.version || 1) > FORMAT && !p._warned) { p._warned = true; setTimeout(() => toast('This project was saved by a newer Blockwise. Update the app before editing it.'), 300); }
-  p.app = 'blockwise'; p.version = Math.max(p.version || 1, FORMAT);
+  if ((p.version || 1) > FORMAT && !p._warned) { p._warned = true; setTimeout(() => toast('This project was saved by a newer Overhead. Update the app before editing it.'), 300); }
+  p.app = 'overhead'; p.version = Math.max(p.version || 1, FORMAT);
   p.locations = p.locations || [];
   const fix = o => {
     if (o.type !== 'arrow' || o.pts) return;
@@ -471,8 +471,8 @@ function loadLibrary() {
   for (const k in projCache) delete projCache[k];
   if (host) { library = host.list(); if (!library.length && host.isNewFolder()) storeProject(demoProject()); return; }
   try { library = JSON.parse(lsGet(LIB_KEY)) || []; } catch (e) { library = []; }
-  const old = lsGet('blockwise.project'); // migrate the single-project prototype
-  if (old) { try { const p = JSON.parse(old); if (validProject(p)) { p.id = p.id || uid(); storeProject(p); } } catch (e) {} lsDel('blockwise.project'); }
+  const old = lsGet('overhead.project'); // migrate the single-project prototype
+  if (old) { try { const p = JSON.parse(old); if (validProject(p)) { p.id = p.id || uid(); storeProject(p); } } catch (e) {} lsDel('overhead.project'); }
   if (!library.length) storeProject(demoProject());
 }
 function storeProject(p) {
@@ -520,7 +520,7 @@ function goHome() {
 }
 function newProject(thenImport) {
   const s = { id:uid(), name:'INT. LOCATION – DAY', notes:'', objects:[], shots:[], open:true };
-  const p = { app:'blockwise', version:2, id:uid(), name:'Untitled Project', scenes:[s] };
+  const p = { app:'overhead', version:2, id:uid(), name:'Untitled Project', scenes:[s] };
   storeProject(p); openProject(p.id);
   if (thenImport) setTimeout(openImport, 50);
   else setTimeout(() => { $('#projName').focus(); $('#projName').select(); }, 50);
@@ -549,7 +549,7 @@ function download(name, blob) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
 }
 const safeName = (p = project) => (p.name || 'project').replace(/[^\w\- ]+/g,'').trim() || 'project';
-function exportProjectFile(p = project) { download(`${safeName(p)}.blockwise.json`, new Blob([JSON.stringify(p,null,2)],{type:'application/json'})); toast('Project file exported'); }
+function exportProjectFile(p = project) { download(`${safeName(p)}.overhead.json`, new Blob([JSON.stringify(p,null,2)],{type:'application/json'})); toast('Project file exported'); }
 $('#fileIn').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
   try {
@@ -557,7 +557,7 @@ $('#fileIn').addEventListener('change', async e => {
     if (!validProject(p)) throw new Error('bad');
     p.id = uid(); p.name = p.name || f.name.replace(/\..*$/,'');
     storeProject(normalizeProject(p)); openProject(p.id); toast(`Imported ${f.name}`);
-  } catch (err) { toast("That file isn't a Blockwise project"); }
+  } catch (err) { toast("That file isn't a Overhead project"); }
 });
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('show'), 2000); }
@@ -1012,7 +1012,7 @@ function renderHome() {
       <button class="btn primary" data-hact="new">${ico('plus',14)} New project</button></div>
     <div class="cards"><button class="newcard" data-hact="new">${ico('plus',22)}<span>New project</span></button>${cards}</div>
     ${host ? `<div class="home-foot"><span>Library folder</span><button class="linkish" data-hact="reveal" data-tip="Show in ${host.platform === 'darwin' ? 'Finder' : 'Explorer'}">${esc(host.folder())}</button>
-      <button class="btn" data-hact="folder">${ico('open',14)} Change folder…</button><span class="ver">Blockwise ${esc(host.version)}</span></div>` : ''}`;
+      <button class="btn" data-hact="folder">${ico('open',14)} Change folder…</button><span class="ver">Overhead ${esc(host.version)}</span></div>` : ''}`;
 }
 $('#home').addEventListener('click', e => {
   const a = e.target.closest('[data-hact]');
@@ -2168,7 +2168,7 @@ function refreshAll() {
 loadLibrary();
 buildChrome();
 setView('home');
-if (host && host.updatedFrom && host.updatedFrom()) setTimeout(() => toast(`Updated to Blockwise ${host.version}`), 400);
+if (host && host.updatedFrom && host.updatedFrom()) setTimeout(() => toast(`Updated to Overhead ${host.version}`), 400);
 new ResizeObserver(() => renderCanvas()).observe(svg);
 </script>
 </body>

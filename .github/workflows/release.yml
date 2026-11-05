@@ -1,6 +1,6 @@
 # Builds the Windows and Mac apps and publishes them as a GitHub Release.
 # Runs when you push a version tag (npm version patch && git push --follow-tags).
-# Installed copies of Blockwise check these releases and update themselves.
+# Installed copies of Overhead check these releases and update themselves.
 name: Release
 
 on:
@@ -17,7 +17,7 @@ jobs:
     steps:
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" || gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --title "Blockwise ${GITHUB_REF_NAME#v}" --generate-notes
+        run: gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" || gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --title "Overhead ${GITHUB_REF_NAME#v}" --generate-notes
 
   build:
     needs: release

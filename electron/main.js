@@ -1,14 +1,16 @@
-// Blockwise desktop shell.
+// Overhead desktop shell.
 // The app itself is app/index.html. This file only gives it a window, real files on disk and updates.
-// Projects live in a library folder the user picks (default: Documents/Blockwise), one
-// "<project name>.blockwise.json" file per project, so installing an update never touches them.
+// Projects live in a library folder the user picks (default: Documents/Overhead), one
+// "<project name>.overhead.json" file per project, so installing an update never touches them.
 
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
-const EXT = '.blockwise.json';
+const EXT = '.overhead.json';
+const LEGACY_EXT = ['.blockwise.json'];   // older names still open; they're renamed to EXT on the next save
+const extOf = f => [EXT, ...LEGACY_EXT].find(x => f.toLowerCase().endsWith(x));
 const BACKUPS = '.backups';
 const KEEP_BACKUPS = 20;
 
@@ -23,7 +25,7 @@ function saveSettings() {
 // ---------- library folder ----------
 let newFolder = false;   // true when the library folder was just created, so the app can add the sample project
 function libDir() {
-  const d = settings.libraryDir || path.join(app.getPath('documents'), 'Blockwise');
+  const d = settings.libraryDir || path.join(app.getPath('documents'), 'Overhead');
   if (!fs.existsSync(d)) { fs.mkdirSync(d, { recursive: true }); newFolder = true; }
   return d;
 }
@@ -42,7 +44,7 @@ function scan() {
   index = {};
   const dir = libDir(), out = [];
   let files = [];
-  try { files = fs.readdirSync(dir).filter(f => f.toLowerCase().endsWith(EXT)); } catch {}
+  try { files = fs.readdirSync(dir).filter(extOf); } catch {}
   // oldest file first, so when two files share an id the original keeps it and the copy gets a new one
   const born = f => { try { return fs.statSync(path.join(dir, f)).birthtimeMs; } catch { return 0; } };
   files.sort((a, b) => born(a) - born(b));
@@ -54,7 +56,7 @@ function scan() {
       // a file copied in Explorer/Finder keeps the original's id; give it its own so both show up
       if (!p.id || index[p.id]) { p.id = crypto.randomUUID(); writeAtomic(full, JSON.stringify(p, null, 2)); }
       index[p.id] = f;
-      out.push({ id: p.id, name: p.name || f.slice(0, -EXT.length), updated: p.updated || fs.statSync(full).mtimeMs });
+      out.push({ id: p.id, name: p.name || f.slice(0, -extOf(f).length), updated: p.updated || fs.statSync(full).mtimeMs });
     } catch {}
   }
   return out;
@@ -65,7 +67,7 @@ function backup(dir, file) {
   if (!fs.existsSync(src)) return;
   const bdir = path.join(dir, BACKUPS);
   fs.mkdirSync(bdir, { recursive: true });
-  const base = file.slice(0, -EXT.length);
+  const base = file.slice(0, -(extOf(file) || EXT).length);
   const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
   fs.copyFileSync(src, path.join(bdir, `${base} ${stamp}${EXT}`));
   const old = fs.readdirSync(bdir).filter(f => f.startsWith(base + ' ') && f.endsWith(EXT)).sort();
@@ -108,12 +110,12 @@ ipcMain.on('lib:remove', (e, id) => {
 });
 ipcMain.handle('lib:choose', async () => {
   const r = await dialog.showOpenDialog(win, {
-    title: 'Choose your Blockwise library folder', defaultPath: libDir(),
+    title: 'Choose your Overhead library folder', defaultPath: libDir(),
     properties: ['openDirectory', 'createDirectory'], buttonLabel: 'Use this folder',
   });
   if (r.canceled || !r.filePaths[0]) return null;
   settings.libraryDir = r.filePaths[0]; saveSettings(); backedUp.clear();
-  newFolder = !fs.readdirSync(settings.libraryDir).some(f => f.toLowerCase().endsWith(EXT));
+  newFolder = !fs.readdirSync(settings.libraryDir).some(extOf);
   return settings.libraryDir;
 });
 ipcMain.on('lib:reveal', () => { shell.openPath(libDir()); });
@@ -131,7 +133,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: b.width || 1440, height: b.height || 900, x: b.x, y: b.y,
     minWidth: 900, minHeight: 600, backgroundColor: '#0e1014', show: false,
-    title: 'Blockwise', autoHideMenuBar: true,
+    title: 'Overhead', autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },
   });
   if (settings.maximized) win.maximize();
@@ -169,7 +171,7 @@ function setupUpdates() {
   autoUpdater.on('update-downloaded', async info => {
     const r = await dialog.showMessageBox(win, {
       type: 'info', buttons: ['Restart now', 'Later'], defaultId: 0, cancelId: 1,
-      message: `Blockwise ${info.version} is ready to install`,
+      message: `Overhead ${info.version} is ready to install`,
       detail: 'Your projects stay in your library folder and are not changed by updates. If you choose Later, it installs the next time you quit.',
     });
     if (r.response === 0) autoUpdater.quitAndInstall();

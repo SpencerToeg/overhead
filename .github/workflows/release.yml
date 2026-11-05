@@ -1,5 +1,5 @@
 # Builds the Windows and Mac apps and publishes them as a GitHub Release.
-# Runs when you push a version tag, e.g.  git tag v0.2.0 && git push --tags
+# Runs when you push a version tag (npm version patch && git push --follow-tags).
 # Installed copies of Blockwise check these releases and update themselves.
 name: Release
 
@@ -11,15 +11,24 @@ permissions:
   contents: write
 
 jobs:
+  # create the release once, so the two builds below upload into the same one
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" || gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --title "Blockwise ${GITHUB_REF_NAME#v}" --generate-notes
+
   build:
+    needs: release
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: npm

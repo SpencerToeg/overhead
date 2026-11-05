@@ -14,4 +14,5 @@ contextBridge.exposeInMainWorld('overheadHost', {
   chooseFolder: () => ipcRenderer.invoke('lib:choose'),
   reveal: () => ipcRenderer.send('lib:reveal'),
   saveAs: (name, bytes) => ipcRenderer.invoke('file:saveAs', name, bytes),
+  savePDF: (html, name) => ipcRenderer.invoke('file:savePDF', html, name),
 });

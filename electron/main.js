@@ -126,6 +126,24 @@ ipcMain.handle('file:saveAs', async (e, name, bytes) => {
   catch { return false; }
 });
 
+// print an HTML page (the shot list) to PDF in a hidden window, then ask where to save it
+ipcMain.handle('file:savePDF', async (e, html, name) => {
+  const r = await dialog.showSaveDialog(win, { defaultPath: path.join(settings.lastExportDir || app.getPath('documents'), name), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+  if (r.canceled || !r.filePath) return null;
+  const tmp = path.join(app.getPath('temp'), `overhead-print-${Date.now()}.html`);
+  const pw = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
+  try {
+    fs.writeFileSync(tmp, html);
+    await pw.loadFile(tmp);
+    const pdf = await pw.webContents.printToPDF({ landscape: true, printBackground: true, pageSize: 'Letter', margins: { marginType: 'custom', top: .4, bottom: .4, left: .4, right: .4 } });
+    fs.writeFileSync(r.filePath, pdf);
+    settings.lastExportDir = path.dirname(r.filePath); saveSettings();
+    shell.openPath(r.filePath);
+    return true;
+  } catch (err) { console.error(err); return false; }
+  finally { pw.destroy(); try { fs.unlinkSync(tmp); } catch {} }
+});
+
 // ---------- window ----------
 let win;
 function createWindow() {

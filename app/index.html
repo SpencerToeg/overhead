@@ -89,7 +89,18 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:0 10px 
 .addshot{display:flex;align-items:center;gap:6px;border:0;border-top:1px solid transparent;background:transparent;color:var(--dim);padding:5px 8px;border-radius:6px;width:100%;text-align:left;font-size:12px}
 .addshot:hover{color:var(--accent);background:var(--hover)}
 .lpin{color:var(--set);display:grid;place-items:center}
-#locs{max-height:32%;overflow:auto;padding:0 6px 12px}
+#locs,#chars{max-height:22%;overflow:auto;padding:0 6px 12px}
+.cdot{width:12px;height:12px;border-radius:50%;flex:none;border:2px solid #0d0f14;box-shadow:0 0 0 1px var(--line2)}
+.char-row{cursor:grab}
+.setups{display:flex;gap:4px;flex-wrap:wrap;padding:2px 8px 6px 8px}
+.su{border:1px solid var(--line2);background:var(--bg);color:var(--muted);border-radius:6px;height:22px;padding:0 7px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:5px;max-width:120px;position:relative}
+.su span{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.su span:empty{display:none}
+.su:hover{color:var(--text);border-color:var(--dim)}
+.su.on{background:var(--accent-bg);border-color:rgba(110,168,255,.45);color:var(--accent)}
+.su.add{border-style:dashed}
+.stag{font-size:10px;font-weight:700;color:var(--dim);border:1px solid var(--line2);border-radius:4px;padding:0 4px;line-height:15px}
+.stag.on{color:var(--accent);border-color:rgba(110,168,255,.45)}
 .loc-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;color:var(--muted)}
 .loc-row:hover{background:var(--hover);color:var(--text)}
 .loc-row .ic{color:var(--set)}
@@ -256,6 +267,8 @@ td.desc{max-width:420px;color:var(--muted)}
   <aside id="sidebar">
     <div class="sh-title"><span>Scenes</span><button class="ib" id="impScript" data-tip="Import script"></button><button class="ib" id="addScene" data-tip="New scene"></button></div>
     <div id="scenes"></div>
+    <div class="sh-title" style="border-top:1px solid var(--line)"><span>Characters</span><button class="ib" id="addChar" data-tip="New character"></button></div>
+    <div id="chars"></div>
     <div class="sh-title" style="border-top:1px solid var(--line)"><span>Locations</span></div>
     <div id="locs"></div>
   </aside>
@@ -378,9 +391,40 @@ let view = { x:0, y:0, zoom:1 };
 
 const scene = () => project.scenes.find(s=>s.id===state.sceneId) || project.scenes[0];
 const sceneIndex = sc => project.scenes.indexOf(sc);
-const obj = id => scene().objects.find(o=>o.id===id);
+// a scene has one or more setups; each setup is its own canvas (objects + optional saved location)
+const setupOf = sc => sc.setups.find(x => x.id === sc.setupId) || sc.setups[0];
+const cv = () => setupOf(scene());
+const obj = id => cv().objects.find(o=>o.id===id);
+const allObjects = sc => sc.setups.flatMap(u => u.objects);
+const setupHolding = (sc, id) => sc.setups.find(u => u.objects.some(o => o.id === id));
+const camOf = (sc, s) => s.cameraId ? allObjects(sc).find(o => o.id === s.cameraId) || null : null;
+const shotSetup = (sc, s) => (s.cameraId && setupHolding(sc, s.cameraId)) || sc.setups.find(u => u.id === s.setupId) || sc.setups[0];
+const sceneOfSetup = u => project.scenes.find(sc => sc.setups.includes(u));
 const shotById = id => { for (const sc of project.scenes) { const s = sc.shots.find(x=>x.id===id); if (s) return [s, sc]; } return [null,null]; };
-const shotNum = (sc, s) => `${sceneIndex(sc)+1}${letters(sc.shots.indexOf(s))}`;
+// scene numbers: a scene can have its own number ("1A", "12B"); scenes without one count on from the last number
+function sceneNo(sc) {
+  let n = 0;
+  for (const s of project.scenes) {
+    if (s.num) { const m = parseInt(s.num, 10); if (!isNaN(m)) n = m; if (s === sc) return s.num; }
+    else { n++; if (s === sc) return String(n); }
+  }
+  return '?';
+}
+// the number a scene would get if it had no number of its own
+const autoNo = sc => { const keep = sc.num; delete sc.num; const n = sceneNo(sc); if (keep) sc.num = keep; return n; };
+const shotNum = (sc, s) => { const n = sceneNo(sc); return `${n}${/[A-Za-z]$/.test(n) ? '-' : ''}${letters(sc.shots.indexOf(s))}`; };
+// "1" → "1A", "1A" → "1B"; skips numbers already used
+function insertNumAfter(sc) {
+  const used = new Set(project.scenes.map(sceneNo));
+  let base = sceneNo(sc), cand;
+  const m = base.match(/^(.*?)([A-Z]+)$/i);
+  if (m) { base = m[1]; cand = m[2].toUpperCase(); } else cand = '';
+  const next = s => { if (!s) return 'A'; const a = s.split(''); let i = a.length-1; while (i >= 0 && a[i] === 'Z') { a[i] = 'A'; i--; } if (i < 0) a.unshift('A'); else a[i] = String.fromCharCode(a[i].charCodeAt(0)+1); return a.join(''); };
+  do cand = next(cand); while (used.has(base + cand));
+  return base + cand;
+}
+function makeSetup(name = 'Setup 1', objects = []) { return { id:uid(), name, objects, locationId:null }; }
+function makeScene(name = 'INT. LOCATION – DAY') { const u = makeSetup(); return { id:uid(), name, notes:'', setups:[u], setupId:u.id, shots:[], open:true }; }
 const selObj = () => state.sel ? obj(state.sel.id) : null;
 const curShot = () => state.shotId ? shotById(state.shotId)[0] : null;
 const layerOf = o => o.layer || ((o.type === 'prop' && o.kind !== 'light') ? 'set' : 'block');
@@ -388,11 +432,29 @@ const isLive = o => layerOf(o) === state.mode;
 const selIds = () => state.multi.length ? state.multi : state.sel ? [state.sel.id] : [];
 const isSelected = id => selIds().includes(id);
 const locById = id => (project.locations || []).find(l => l.id === id);
+const charById = id => id && project ? (project.characters || []).find(c => c.id === id) : null;
+// actor shapes; "child" is a person drawn smaller by default
+const SHAPES = {
+  person:{ label:'Person', scale:1, hw:20, hh:20 },
+  child:{ label:'Child', scale:.7, hw:20, hh:20 },
+  dog:{ label:'Dog', scale:1, hw:13, hh:26 },
+  horse:{ label:'Horse', scale:1, hw:20, hh:52 },
+  creature:{ label:'Creature', scale:1.3, hw:24, hh:24 },
+};
+const shapeOf = o => SHAPES[o.shape] ? o.shape : 'person';
+const defaultScale = o => { const c = o.charId && charById(o.charId); return c && c.scale ? c.scale : SHAPES[shapeOf(o)].scale; };
+const actorScale = o => o.scale || defaultScale(o);
+// a saved character pushes its name, colour and shape to every actor linked to it
+function syncCharacter(ch) {
+  for (const sc of project.scenes) for (const o of allObjects(sc)) if (o.charId === ch.id) { o.name = ch.name; o.color = ch.color; o.shape = ch.shape; }
+}
 
-function makeObject(type, kind, x, y, sc = scene()) {
+function makeObject(type, kind, x, y, sc = cv()) {
   if (type === 'actor') {
     const n = sc.objects.filter(o=>o.type==='actor').length;
-    return { id:uid(), type, layer:'block', name:'Actor '+(n+1), color:COLORS[n%COLORS.length], x, y, rot:180, path:[] };
+    const ch = kind && charById(kind);   // kind = character id when placing a saved character
+    if (ch) return { id:uid(), type, layer:'block', charId:ch.id, name:ch.name, color:ch.color, shape:ch.shape, x, y, rot:180, path:[] };
+    return { id:uid(), type, layer:'block', name:'Actor '+(n+1), color:COLORS[n%COLORS.length], shape:'person', x, y, rot:180, path:[] };
   }
   if (type === 'camera') {
     const n = sc.objects.filter(o=>o.type==='camera').length;
@@ -436,26 +498,41 @@ function demoProject() {
   );
   const car = makeObject('prop','car',0,0,s2); car.rot = 90; s2.objects.push(car);
   for (const y of [-90, 90]) { const c = makeObject('prop','walls',0,y,s2); Object.assign(c,{name:'Curb',color:'#4a5160',thick:6,pts:[{x:-350,y:0},{x:350,y:0}]}); s2.objects.push(c); }
-  return p;
+  // saved characters, linked to the actors above
+  p.characters = [{ id:uid(), name:'MAYA', color:'#ff8ad8', shape:'person' }, { id:uid(), name:'LEO', color:'#ffb86b', shape:'person' }];
+  for (const o of s1.objects) { const ch = p.characters.find(c => c.name === o.name); if (o.type === 'actor' && ch) o.charId = ch.id; }
+  // Leo walks around the end of the table on his way to the chair (one move with a bend point)
+  const leo = s1.objects.find(o => o.name === 'LEO'); leo.path = [{ x:80, y:0, rot:-90, via:[{ x:120, y:60 }, { x:115, y:15 }] }];
+  return normalizeProject(p);
 }
 
 // ---------- project library ----------
 // Desktop app: each project is a "<name>.overhead.json" file in the library folder the user picks (like an Obsidian vault).
 // Browser preview: falls back to localStorage.
 const host = window.overheadHost || null;
-const FORMAT = 2;   // bump when the project file shape changes, and add the migration to normalizeProject
+const FORMAT = 3;   // bump when the project file shape changes, and add the migration to normalizeProject
+// 3: scenes hold setups (each with its own objects + location); characters; actor shapes/sizes; scene numbers; bend points on moves
 const LIB_KEY = 'overhead.library', PKEY = id => 'overhead.p.' + id;
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 const lsDel = k => { try { localStorage.removeItem(k); } catch (e) {} };
 let library = [];
 const projCache = {};
-const validProject = p => p && Array.isArray(p.scenes) && p.scenes.length && p.scenes.every(s=>Array.isArray(s.objects)&&Array.isArray(s.shots));
-// bring older files up to the current shape (multi-point arrows, locations)
+const validProject = p => p && Array.isArray(p.scenes) && p.scenes.length && p.scenes.every(s=>(Array.isArray(s.objects)||Array.isArray(s.setups))&&Array.isArray(s.shots));
+// bring older files up to the current shape (multi-point arrows, locations, setups)
 function normalizeProject(p) {
   if ((p.version || 1) > FORMAT && !p._warned) { p._warned = true; setTimeout(() => toast('This project was saved by a newer Overhead. Update the app before editing it.'), 300); }
   p.app = 'overhead'; p.version = Math.max(p.version || 1, FORMAT);
   p.locations = p.locations || [];
+  p.characters = p.characters || [];
+  for (const s of p.scenes) {   // v2 → v3: a scene's objects become its first setup
+    if (!Array.isArray(s.setups)) {
+      s.setups = [{ id:uid(), name:'Setup 1', objects:s.objects || [], locationId:s.locationId || null }];
+      delete s.objects; delete s.locationId;
+    }
+    if (!s.setups.length) s.setups.push(makeSetup());
+    if (!s.setups.some(u => u.id === s.setupId)) s.setupId = s.setups[0].id;
+  }
   const fix = o => {
     if (o.type !== 'arrow' || o.pts) return;
     const sx = o.x, sy = o.y, ex = o.x2 ?? o.x + 100, ey = o.y2 ?? o.y, len = Math.hypot(ex-sx, ey-sy) || 1, b = o.bend || 0;
@@ -463,7 +540,7 @@ function normalizeProject(p) {
     if (b) o.pts.push({ x:Math.round((sx+ex)/2 - (ey-sy)/len*b/2), y:Math.round((sy+ey)/2 + (ex-sx)/len*b/2) });
     o.pts.push({ x:ex, y:ey }); o.smooth = true; delete o.x2; delete o.y2; delete o.bend;
   };
-  p.scenes.forEach(s => s.objects.forEach(fix));
+  p.scenes.forEach(s => s.setups.forEach(u => u.objects.forEach(fix)));
   p.locations.forEach(l => l.objects.forEach(fix));
   return p;
 }
@@ -509,18 +586,17 @@ function openProject(id) {
   project = normalizeProject(p); undoStack = []; redoStack = [];
   for (const k in views) delete views[k];
   state.sceneId = p.scenes[0].id; state.sel = null; state.multi = []; state.shotId = null; state.sceneSelected = false; state.draw = null; state.tool = 'select';
-  applyMode(hasSet(scene()) ? 'block' : 'set');
+  applyMode(hasSet(cv()) ? 'block' : 'set');
   setView('diagram');
   requestAnimationFrame(() => { fitView(); refreshAll(); });
 }
 function goHome() {
-  if (project && checkLocationEdits(scene())) return;   // answer the location question first, then leave
+  if (project && checkLocationEdits(cv())) return;   // answer the location question first, then leave
   if (project) { clearTimeout(saveTimer); storeProject(project); }
   stopPlayback(); hideMenu(); project = null; setView('home');
 }
 function newProject(thenImport) {
-  const s = { id:uid(), name:'INT. LOCATION – DAY', notes:'', objects:[], shots:[], open:true };
-  const p = { app:'overhead', version:2, id:uid(), name:'Untitled Project', scenes:[s] };
+  const p = { app:'overhead', version:FORMAT, id:uid(), name:'Untitled Project', scenes:[makeScene()], locations:[], characters:[] };
   storeProject(p); openProject(p.id);
   if (thenImport) setTimeout(openImport, 50);
   else setTimeout(() => { $('#projName').focus(); $('#projName').select(); }, 50);
@@ -570,8 +646,48 @@ function poseAt(o, t) {
   if (t == null || P.length < 2) return P[0];
   const s = clamp(t,0,1)*(P.length-1), i = Math.min(P.length-2, Math.floor(s));
   let f = s - i; f = f*f*(3-2*f); // ease each move
-  const a = P[i], b = P[i+1];
-  return { x:a.x+(b.x-a.x)*f, y:a.y+(b.y-a.y)*f, rot:a.rot + normDeg(b.rot-a.rot)*f };
+  const a = P[i], b = P[i+1], rot = a.rot + normDeg(b.rot-a.rot)*f;
+  if (b.via && b.via.length) { const q = atLength(sampleCurve(movePts(a, b)), f); return { x:q.x, y:q.y, rot }; }   // walk the curve through bend points
+  return { x:a.x+(b.x-a.x)*f, y:a.y+(b.y-a.y)*f, rot };
+}
+// a move runs from one mark to the next through its bend points ("via")
+const movePts = (a, b) => [a, ...(b.via || []), b];
+// smooth (Catmull-Rom → cubic Bézier) or straight segments through points
+function splineSegs(P, smooth = true) {
+  const n = P.length, segs = [];
+  for (let i = 0; i < n-1; i++) {
+    const p1 = P[i], p2 = P[i+1];
+    if (!smooth || n === 2) { segs.push({ p1, c1:p1, c2:p2, p2 }); continue; }
+    const p0 = P[i-1] || p1, p3 = P[i+2] || p2;
+    segs.push({ p1, c1:{ x:p1.x+(p2.x-p0.x)/6, y:p1.y+(p2.y-p0.y)/6 }, c2:{ x:p2.x-(p3.x-p1.x)/6, y:p2.y-(p3.y-p1.y)/6 }, p2 });
+  }
+  return segs;
+}
+const bez = (s, t) => { const u = 1-t; return { x:u*u*u*s.p1.x + 3*u*u*t*s.c1.x + 3*u*t*t*s.c2.x + t*t*t*s.p2.x, y:u*u*u*s.p1.y + 3*u*u*t*s.c1.y + 3*u*t*t*s.c2.y + t*t*t*s.p2.y }; };
+const segsD = segs => segs.length ? `M ${rnd(segs[0].p1.x)} ${rnd(segs[0].p1.y)}` + segs.map(s => ` C ${rnd(s.c1.x)} ${rnd(s.c1.y)} ${rnd(s.c2.x)} ${rnd(s.c2.y)} ${rnd(s.p2.x)} ${rnd(s.p2.y)}`).join('') : '';
+// curve as a polyline with running length, so things can be placed along it by distance
+function sampleCurve(P, smooth = true) {
+  const segs = splineSegs(P, smooth), out = [{ x:P[0].x, y:P[0].y, l:0 }];
+  for (const s of segs) {
+    const straight = s.c1 === s.p1 && s.c2 === s.p2, n = straight ? 1 : 20;
+    for (let k = 1; k <= n; k++) { const q = bez(s, k/n), last = out[out.length-1]; out.push({ x:q.x, y:q.y, l:last.l + Math.hypot(q.x-last.x, q.y-last.y) }); }
+  }
+  out.total = out[out.length-1].l;
+  return out;
+}
+// point (and direction) at fraction f of the way along a sampled curve; byLen = distance instead of fraction
+function atLength(S, f, byLen = false) {
+  const L = clamp(byLen ? f : f*S.total, 0, S.total);
+  let i = 1; while (i < S.length-1 && S[i].l < L) i++;
+  const a = S[i-1], b = S[i], t = b.l > a.l ? (L-a.l)/(b.l-a.l) : 0;
+  return { x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t, ang:Math.atan2(b.y-a.y, b.x-a.x)*180/Math.PI };
+}
+// cut a sampled curve to the part between two distances
+function trimSamples(S, from, to) {
+  const out = [atLength(S, from, true)];
+  for (const q of S) if (q.l > from && q.l < to) out.push(q);
+  out.push(atLength(S, to, true));
+  return out;
 }
 function toWorldOf(o, q) { const r = o.rot*Math.PI/180, c = Math.cos(r), s = Math.sin(r); return { x:o.x + q.x*c - q.y*s, y:o.y + q.x*s + q.y*c }; }
 function toLocalOf(o, w) { const r = -o.rot*Math.PI/180, c = Math.cos(r), s = Math.sin(r), dx = w.x-o.x, dy = w.y-o.y; return { x:dx*c - dy*s, y:dx*s + dy*c }; }
@@ -583,7 +699,7 @@ function localBox(o) {
   const [hw,hh] = halfSize(o); return [-hw,-hh,hw,hh];
 }
 function halfSize(o) {
-  if (o.type === 'actor') return [20,20];
+  if (o.type === 'actor') { const S = SHAPES[shapeOf(o)], k = actorScale(o); return [S.hw*k, S.hh*k]; }
   if (o.type === 'camera') return [15,21];
   if (o.type === 'arrow') return [10,10];
   if (o.kind === 'walls') return [Math.max(10,...o.pts.map(p=>Math.abs(p.x)))+o.thick/2, Math.max(10,...o.pts.map(p=>Math.abs(p.y)))+o.thick/2];
@@ -593,21 +709,9 @@ function halfSize(o) {
 }
 // arrows run through their points as a smooth (Catmull-Rom) curve, or as straight segments
 function arrowPath(o) {
-  const P = o.pts, n = P.length, segs = [];
-  for (let i = 0; i < n-1; i++) {
-    const p1 = P[i], p2 = P[i+1];
-    if (!o.smooth || n === 2) { segs.push({ p1, c1:p1, c2:p2, p2 }); continue; }
-    const p0 = P[i-1] || p1, p3 = P[i+2] || p2;
-    segs.push({ p1, c1:{ x:p1.x+(p2.x-p0.x)/6, y:p1.y+(p2.y-p0.y)/6 }, c2:{ x:p2.x-(p3.x-p1.x)/6, y:p2.y-(p3.y-p1.y)/6 }, p2 });
-  }
-  const f = q => `${rnd(q.x)} ${rnd(q.y)}`;
-  const d = `M ${f(P[0])}` + segs.map(s => ` C ${f(s.c1)} ${f(s.c2)} ${f(s.p2)}`).join('');
-  const mids = segs.map(s => ({ x:(s.p1.x+3*s.c1.x+3*s.c2.x+s.p2.x)/8, y:(s.p1.y+3*s.c1.y+3*s.c2.y+s.p2.y)/8 }));
-  const near = (a, b) => Math.hypot(a.x-b.x, a.y-b.y) < .5;
-  const last = segs[segs.length-1], first = segs[0];
-  const endFrom = near(last.c2, last.p2) ? last.p1 : last.c2, startFrom = near(first.c1, first.p1) ? first.p2 : first.c1;
-  return { d, segs, mids, endAng:Math.atan2(last.p2.y-endFrom.y, last.p2.x-endFrom.x)*180/Math.PI,
-    startAng:Math.atan2(first.p1.y-startFrom.y, first.p1.x-startFrom.x)*180/Math.PI };
+  const segs = splineSegs(o.pts, !!o.smooth);
+  const mids = segs.map(s => bez(s, .5));
+  return { d:segsD(segs), segs, mids };
 }
 // Shift-constrain a point to 0/45/90° from an anchor
 function constrain45(from, p, e) {
@@ -622,6 +726,7 @@ function bounds(sc, withCones) {
   for (const o of sc.objects) {
     if (o.type === 'arrow') { const g = arrowPath(o); o.pts.forEach(q => add(q.x, q.y, 12)); g.mids.forEach(q => add(q.x, q.y, 14)); continue; }
     if (o.kind === 'walls') { for (const q of o.pts) { const w = toWorldOf(o,q); add(w.x, w.y, o.thick); } continue; }
+    for (const v of (o.path || []).flatMap(q => q.via || [])) add(v.x, v.y, 10);
     for (const p of poses(o)) {
       const [hw,hh] = halfSize(o); add(p.x, p.y, Math.hypot(hw,hh) + (o.type==='prop'?0:14));
       if (withCones && o.type === 'camera') {
@@ -645,7 +750,7 @@ function wallSegments(sc) {
 }
 function nearestWall(p, maxD) {
   let best = null, bd = maxD;
-  for (const s of wallSegments(scene())) {
+  for (const s of wallSegments(cv())) {
     const dx = s.b.x-s.a.x, dy = s.b.y-s.a.y, L2 = dx*dx+dy*dy || 1;
     const t = clamp(((p.x-s.a.x)*dx + (p.y-s.a.y)*dy)/L2, 0, 1), x = s.a.x+dx*t, y = s.a.y+dy*t, d = Math.hypot(p.x-x, p.y-y);
     if (d < bd) { bd = d; best = { x, y, ang:Math.atan2(dy,dx)*180/Math.PI, thick:s.thick, center:s.center }; }
@@ -663,6 +768,48 @@ function applyWallSnap(o, rot0, inward) {
   o.rot = Math.round(pick*10)/10;
   o.h = Math.max(6, s.thick + 2);
   return true;
+}
+
+// editable points on the selected object, in world coordinates. Used both to draw the handles and to
+// pick the nearest one on mouse-down, so a click slightly off a point still grabs it.
+//   ap/am = arrow point / add arrow point · v/vm = wall corner / add corner · bp/bm = bend point on a move / add one
+function handleList(o) {
+  const out = [];
+  if (!o) return out;
+  if (o.type === 'arrow') {
+    arrowPath(o).mids.forEach((m, i) => out.push({ mode:'am', vi:i, x:m.x, y:m.y, plus:true }));
+    o.pts.forEach((q, i) => out.push({ mode:'ap', vi:i, x:q.x, y:q.y, end:i === 0 || i === o.pts.length-1 }));
+  } else if (o.kind === 'walls') {
+    const n = o.pts.length;
+    for (let i = 0; i < n - (o.closed ? 0 : 1); i++) { const a = o.pts[i], b = o.pts[(i+1)%n], m = toWorldOf(o, { x:(a.x+b.x)/2, y:(a.y+b.y)/2 }); out.push({ mode:'vm', vi:i, x:m.x, y:m.y, plus:true }); }
+    o.pts.forEach((q, i) => { const w = toWorldOf(o, q); out.push({ mode:'v', vi:i, x:w.x, y:w.y }); });
+  } else if (o.path && o.path.length && state.showPaths && state.playT == null) {
+    const P = poses(o);
+    for (let s = 1; s < P.length; s++) {
+      const pts = movePts(P[s-1], P[s]), segs = splineSegs(pts);
+      segs.forEach((sg, j) => { const m = bez(sg, .5); out.push({ mode:'bm', seg:s-1, vi:j, x:m.x, y:m.y, plus:true }); });   // a "+" halfway along each stretch
+      (P[s].via || []).forEach((v, j) => out.push({ mode:'bp', seg:s-1, vi:j, x:v.x, y:v.y }));
+    }
+  }
+  return out;
+}
+function pointHandles(o, k) {
+  const H = '#6ea8ff';
+  return handleList(o).map(h => {
+    const a = `data-handle="${h.mode}" data-vi="${h.vi}" ${h.seg != null ? `data-seg="${h.seg}"` : ''}`;
+    const hit = `<circle ${a} cx="${rnd(h.x)}" cy="${rnd(h.y)}" r="${12*k}" fill="transparent"/>`;
+    if (h.plus) return `<g ${a} transform="translate(${rnd(h.x)} ${rnd(h.y)})"><circle r="${11*k}" fill="transparent"/><circle r="${7*k}" fill="#0e1014" fill-opacity=".85" stroke="${H}" stroke-opacity=".7" stroke-width="${k}"/><path d="M ${-3.5*k} 0 H ${3.5*k} M 0 ${-3.5*k} V ${3.5*k}" stroke="${H}" stroke-width="${1.6*k}"/></g>`;
+    const r = h.mode === 'bp' ? 5.5*k : 6.5*k;
+    return hit + `<circle ${a} cx="${rnd(h.x)}" cy="${rnd(h.y)}" r="${r}" fill="${h.end || h.mode === 'bp' ? '#0e1014' : H}" stroke="${H}" stroke-width="${2*k}"/>`;
+  }).join('');
+}
+function nearestHandle(o, p, px = 14) {
+  let best = null, bd = px / view.zoom;
+  for (const h of handleList(o)) {
+    const d = Math.hypot(h.x-p.x, h.y-p.y) - (h.plus ? 0 : 2/view.zoom);   // real points win over "+" at equal distance
+    if (d < bd) { bd = d; best = h; }
+  }
+  return best;
 }
 
 // ---------- drawing ----------
@@ -704,15 +851,39 @@ function propSVG(o) {
   }
   return '';
 }
+// top-down figures, all facing up (−y); drawn at 100% and scaled per actor
+function actorBody(shape, c) {
+  const ink = '#0d0f14', dk = lighten(c, -.35);
+  switch (shape) {
+    case 'dog': return `<path d="M 0 18 Q 3 25 7 27" stroke="${c}" stroke-width="2.5" fill="none" stroke-linecap="round"/><ellipse cy="4" rx="9" ry="15" fill="${c}" opacity=".85"/>
+      <path d="M -6 -20 L -9 -13 L -4 -14 Z M 6 -20 L 9 -13 L 4 -14 Z" fill="${dk}"/><ellipse cy="-15" rx="6.5" ry="7.5" fill="${c}" stroke="${ink}" stroke-width="1.5"/><path d="M -2.5 -23 L 0 -26 L 2.5 -23 Z" fill="${c}"/>`;
+    case 'horse': return `<path d="M 0 34 Q 2 44 0 52" stroke="${dk}" stroke-width="4" fill="none" stroke-linecap="round"/><ellipse cy="10" rx="15" ry="27" fill="${c}" opacity=".85"/>
+      <ellipse cy="-26" rx="6" ry="16" fill="${c}" stroke="${ink}" stroke-width="1.5"/><path d="M -3 -42 L -5 -48 L -1 -43 Z M 3 -42 L 5 -48 L 1 -43 Z" fill="${dk}"/><path d="M 0 -18 L 0 -36" stroke="${dk}" stroke-width="2"/>`;
+    case 'creature': { let sp = ''; for (let i = 0; i < 9; i++) { const a = (i/9)*Math.PI*2 + .35, r1 = 15, r2 = 23, w = .22;
+        sp += `M ${rnd(Math.sin(a-w)*r1)} ${rnd(-Math.cos(a-w)*r1)} L ${rnd(Math.sin(a)*r2)} ${rnd(-Math.cos(a)*r2)} L ${rnd(Math.sin(a+w)*r1)} ${rnd(-Math.cos(a+w)*r1)} Z `; }
+      return `<path d="${sp}" fill="${dk}"/><circle r="16" fill="${c}" stroke="${ink}" stroke-width="2"/><path d="M -6 -15 L 0 -24 L 6 -15 Z" fill="${c}"/>
+        <circle cx="-5.5" cy="-7" r="3" fill="${ink}"/><circle cx="5.5" cy="-7" r="3" fill="${ink}"/><circle cx="-4.8" cy="-7.8" r="1" fill="#fff"/><circle cx="6.2" cy="-7.8" r="1" fill="#fff"/>`; }
+    default: return `<ellipse rx="19" ry="11" fill="${c}" opacity=".5"/><path d="M -5 -8 L 0 -19 L 5 -8 Z" fill="${c}"/><circle r="10" fill="${c}" stroke="${ink}" stroke-width="2"/>`;
+  }
+}
 function shapeSVG(o) {
   const c = o.color;
-  if (o.type === 'actor') return `<ellipse rx="19" ry="11" fill="${c}" opacity=".5"/><path d="M -5 -8 L 0 -19 L 5 -8 Z" fill="${c}"/><circle r="10" fill="${c}" stroke="#0d0f14" stroke-width="2"/>`;
+  if (o.type === 'actor') return `<g transform="scale(${rnd(actorScale(o))})">${actorBody(shapeOf(o), c)}</g>`;
   if (o.type === 'camera') return `<path d="M -7 -10 L -11 -21 L 11 -21 L 7 -10 Z" fill="${c}"/><rect x="-13" y="-10" width="26" height="22" rx="4" fill="#1a1e27" stroke="${c}" stroke-width="2"/><circle cy="1" r="3.5" fill="${c}"/>`;
   return propSVG(o);
 }
 function arrowSVG(o, attrs) {
-  const g = arrowPath(o), w = o.width || 3, c = o.color, hl = 9 + w*2, hw = 4 + w, P = o.pts;
-  const head = (q, a) => `<path d="M 0 0 L ${-hl} ${-hw} L ${-hl*.7} 0 L ${-hl} ${hw} Z" transform="translate(${rnd(q.x)} ${rnd(q.y)}) rotate(${rnd(a)})" fill="${c}"/>`;
+  const g = arrowPath(o), w = o.width || 3, c = o.color, P = o.pts;
+  const S = sampleCurve(P, !!o.smooth), L = S.total;
+  // heads shrink on short arrows; each head points along the curve over its own length and the line stops at its base
+  const hl = Math.min(9 + w*2, L * (o.head === 'both' ? .3 : .45)), hw = Math.max(3, hl*.4 + w*.5);
+  const endOn = o.head !== 'none', startOn = o.head === 'both';
+  const tipEnd = P[P.length-1], tipStart = P[0];
+  const baseEnd = atLength(S, L - hl, true), baseStart = atLength(S, hl, true);
+  const angEnd = Math.atan2(tipEnd.y-baseEnd.y, tipEnd.x-baseEnd.x)*180/Math.PI, angStart = Math.atan2(tipStart.y-baseStart.y, tipStart.x-baseStart.x)*180/Math.PI;
+  const head = (q, a) => `<path d="M 0 0 L ${rnd(-hl)} ${rnd(-hw)} L ${rnd(-hl*.72)} 0 L ${rnd(-hl)} ${rnd(hw)} Z" transform="translate(${rnd(q.x)} ${rnd(q.y)}) rotate(${rnd(a)})" fill="${c}" stroke="${c}" stroke-width="1" stroke-linejoin="round"/>`;
+  const vis = trimSamples(S, startOn ? hl*.7 : 0, endOn ? L - hl*.7 : L);
+  const visD = 'M ' + vis.map(q => `${rnd(q.x)} ${rnd(q.y)}`).join(' L ');
   let lbl = '';
   if (o.label) {
     const i = Math.floor((g.segs.length-1)/2), s = g.segs[i], m = g.mids[i];
@@ -721,8 +892,8 @@ function arrowSVG(o, attrs) {
     lbl = label(m.x + nx*14, m.y + ny*14 + 4, o.label, c, 11, 700);
   }
   return `<g ${attrs}><path d="${g.d}" stroke="transparent" stroke-width="16" fill="none"/>
-    <path d="${g.d}" stroke="${c}" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round" ${o.style==='dashed'?`stroke-dasharray="${w*3} ${w*2.5}"`:''}/>
-    ${o.head !== 'none' ? head(P[P.length-1], g.endAng) : ''}${o.head === 'both' ? head(P[0], g.startAng) : ''}${lbl}</g>`;
+    <path d="${visD}" stroke="${c}" stroke-width="${w}" fill="none" stroke-linecap="${endOn ? 'butt' : 'round'}" stroke-linejoin="round" ${o.style==='dashed'?`stroke-dasharray="${w*3} ${w*2.5}"`:''}/>
+    ${endOn ? head(tipEnd, angEnd) : ''}${startOn ? head(tipStart, angStart) : ''}${lbl}</g>`;
 }
 function conePath(fov, L, apex) {
   const a = fov/2*Math.PI/180, x = Math.sin(a)*L, y = -Math.cos(a)*L - apex;
@@ -733,10 +904,12 @@ const label = (x, y, txt, fill='#c3c8d4', size=11, weight=600) =>
   `<text x="${rnd(x)}" y="${rnd(y)}" font-family="Inter,Segoe UI,sans-serif" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="middle" paint-order="stroke" stroke="${BG}" stroke-width="3" stroke-linejoin="round" pointer-events="none">${esc(txt)}</text>`;
 const gridDefs = z => `<pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M 25 0 V 50 M 0 25 H 50" stroke="#191d25" stroke-width="${1/z}"/><path d="M 0 0 V 50 M 0 0 H 50" stroke="#20252f" stroke-width="${1/z}"/></pattern>`;
 
-function renderLayers({ clean = false, sc = scene(), thumb = false } = {}) {
+// sc = the setup being drawn; focus = camera to highlight in exported images
+function renderLayers({ clean = false, sc = cv(), thumb = false, focus = null } = {}) {
   const t = clean ? null : state.playT, z = clean ? 1 : view.zoom;
   const shot = clean ? null : curShot();
-  const focusCam = shot && shot.cameraId;
+  const focusCam = clean ? focus : shot && shot.cameraId;
+  const owner = !thumb && project ? sceneOfSetup(sc) : null;
   const sel = clean ? null : state.sel;
   let cones='', props='', paths='', ghosts='', figs='', arrows='', labels='', top='';
   for (const o of sc.objects) {
@@ -760,10 +933,11 @@ function renderLayers({ clean = false, sc = scene(), thumb = false } = {}) {
     // movement paths + ghost positions
     if (hasPath && state.showPaths) {
       const P = poses(o), pc = o.type === 'prop' ? '#aab2c0' : o.color;
-      paths += `<g opacity="${locked?.35:.85}"><path d="M ${P.map(p=>`${rnd(p.x)} ${rnd(p.y)}`).join(' L ')}" fill="none" stroke="${pc}" stroke-width="2" stroke-dasharray="7 5"/>`;
-      for (let i = 0; i < P.length-1; i++) {
-        const a = P[i], b = P[i+1], ang = Math.atan2(b.y-a.y, b.x-a.x)*180/Math.PI;
-        paths += `<path d="M -6 -5 L 5 0 L -6 5 Z" fill="${pc}" transform="translate(${rnd((a.x+b.x)/2)} ${rnd((a.y+b.y)/2)}) rotate(${rnd(ang)})"/>`;
+      paths += `<g opacity="${locked?.35:.85}">`;
+      for (let i = 0; i < P.length-1; i++) {   // each move: straight, or a smooth curve through its bend points
+        const pts = movePts(P[i], P[i+1]), S = sampleCurve(pts), m = atLength(S, .5);
+        paths += `<path d="${pts.length > 2 ? segsD(splineSegs(pts)) : `M ${rnd(pts[0].x)} ${rnd(pts[0].y)} L ${rnd(pts[1].x)} ${rnd(pts[1].y)}`}" fill="none" stroke="${pc}" stroke-width="2" stroke-dasharray="7 5"/>`
+          + `<path d="M -6 -5 L 5 0 L -6 5 Z" fill="${pc}" transform="translate(${rnd(m.x)} ${rnd(m.y)}) rotate(${rnd(m.ang)})"/>`;
       }
       paths += '</g>';
       P.forEach((p, i) => {
@@ -777,9 +951,9 @@ function renderLayers({ clean = false, sc = scene(), thumb = false } = {}) {
     const g = `<g ${attr} transform="${tf(pose)}"${gop<1?` opacity="${gop}"`:''}>${shapeSVG(o)}</g>`;
     if (o.type === 'prop') props += g; else figs += g;
     if (thumb) continue;
-    if (o.type === 'actor') labels += `<g opacity="${gop}">${label(pose.x, pose.y+33, o.name, lighten(o.color,.3))}</g>`;
+    if (o.type === 'actor') labels += `<g opacity="${gop}">${label(pose.x, pose.y + halfSize(o)[1] + 13, o.name, lighten(o.color,.3))}</g>`;
     if (o.type === 'camera') {
-      const nums = sc.shots.filter(s=>s.cameraId===o.id).map(s=>shotNum(sc,s)).join(' · ');
+      const nums = owner ? owner.shots.filter(s=>s.cameraId===o.id).map(s=>shotNum(owner,s)).join(' · ') : '';
       const ly = pose.y + 34;
       labels += `<g opacity="${gop<1?gop:1}">${label(pose.x, ly, `${o.name}  ${o.lens}mm`, o.color)}${nums ? label(pose.x, ly+13, nums, '#e7e9ee', 10, 700) : ''}</g>`;
     }
@@ -795,28 +969,20 @@ function renderLayers({ clean = false, sc = scene(), thumb = false } = {}) {
     }
   } else if (so && so.type === 'arrow') {
     const g = arrowPath(so);
-    selection = `<path d="${g.d}" fill="none" stroke="${H}" stroke-width="${1.5*k}" stroke-dasharray="${5*k} ${3*k}" pointer-events="none"/>`
-      + g.mids.map((m, i) => plus(m, `data-handle="am" data-vi="${i}"`)).join('')
-      + so.pts.map((q, i) => `<circle data-handle="ap" data-vi="${i}" cx="${q.x}" cy="${q.y}" r="${6*k}" fill="${i===0||i===so.pts.length-1?'#0e1014':H}" stroke="${H}" stroke-width="${2*k}"/>`).join('');
+    selection = `<path d="${g.d}" fill="none" stroke="${H}" stroke-width="${1.5*k}" stroke-dasharray="${5*k} ${3*k}" pointer-events="none"/>` + pointHandles(so, k);
   } else if (so) {
     const p = sel.pt >= 0 ? so.path[sel.pt] : so;
     const [x0,y0,x1,y1] = localBox(so), pad = 5*k, cx = (x0+x1)/2;
-    const resizable = so.type === 'prop' && !['text','light','walls'].includes(so.kind) && sel.pt < 0;
-    let verts = '';
-    if (so.kind === 'walls') {
-      const n = so.pts.length;
-      for (let i = 0; i < n - (so.closed ? 0 : 1); i++) {
-        const a = so.pts[i], b = so.pts[(i+1)%n];
-        verts += plus({ x:(a.x+b.x)/2, y:(a.y+b.y)/2 }, `data-handle="vm" data-vi="${i}"`);
-      }
-      so.pts.forEach((q, i) => verts += `<circle data-handle="v" data-vi="${i}" cx="${q.x}" cy="${q.y}" r="${6*k}" fill="${H}" stroke="#0e1014" stroke-width="${2*k}"/>`);
-    }
-    selection = `<g transform="${tf(p)}">
+    const resizable = (so.type === 'prop' && !['text','light','walls'].includes(so.kind) && sel.pt < 0) || so.type === 'actor';
+    // while resizing an actor, show its default size as a faint outline for reference
+    const ref = drag && drag.mode === 'aresize' && so.type === 'actor'
+      ? `<g pointer-events="none" opacity=".55"><circle r="${rnd(SHAPES[shapeOf(so)].hw*defaultScale(so))}" fill="none" stroke="#fff" stroke-width="${k}" stroke-dasharray="${3*k} ${3*k}"/></g>` : '';
+    selection = `<g transform="${tf(p)}">${ref}
       <rect x="${x0-pad}" y="${y0-pad}" width="${x1-x0+pad*2}" height="${y1-y0+pad*2}" fill="none" stroke="${H}" stroke-width="${1.5*k}" stroke-dasharray="${5*k} ${3*k}" pointer-events="none"/>
       <line x1="${cx}" y1="${y0-pad}" x2="${cx}" y2="${y0-pad-20*k}" stroke="${H}" stroke-width="${1.5*k}"/>
-      <circle data-handle="rot" cx="${cx}" cy="${y0-pad-24*k}" r="${6*k}" fill="#0e1014" stroke="${H}" stroke-width="${2*k}"/>
-      ${resizable ? `<rect data-handle="resize" x="${x1+pad-5*k}" y="${y1+pad-5*k}" width="${10*k}" height="${10*k}" fill="${H}" stroke="#0e1014" stroke-width="${k}"/>` : ''}
-      ${verts}</g>`;
+      <circle data-handle="rot" cx="${cx}" cy="${y0-pad-24*k}" r="${11*k}" fill="transparent"/><circle data-handle="rot" cx="${cx}" cy="${y0-pad-24*k}" r="${6*k}" fill="#0e1014" stroke="${H}" stroke-width="${2*k}"/>
+      ${resizable ? `<rect data-handle="${so.type === 'actor' ? 'aresize' : 'resize'}" x="${x1+pad-9*k}" y="${y1+pad-9*k}" width="${18*k}" height="${18*k}" fill="transparent"/><rect data-handle="${so.type === 'actor' ? 'aresize' : 'resize'}" x="${x1+pad-5*k}" y="${y1+pad-5*k}" width="${10*k}" height="${10*k}" fill="${H}" stroke="#0e1014" stroke-width="${k}"/>` : ''}
+      </g>` + pointHandles(so, k);
   }
   // in-progress wall / room drawing
   let draft = '';
@@ -849,7 +1015,7 @@ function renderCanvas() {
   const x0 = -view.x/z, y0 = -view.y/z;
   svg.innerHTML = `<defs>${gridDefs(z)}</defs><g transform="translate(${view.x} ${view.y}) scale(${z})"><rect x="${x0}" y="${y0}" width="${W/z}" height="${H/z}" fill="url(#grid)"/>${renderLayers()}</g>`;
   $('#zoomVal').textContent = Math.round(z*100) + '%';
-  $('#empty').classList.toggle('show', scene().objects.length === 0 && !state.draw);
+  $('#empty').classList.toggle('show', cv().objects.length === 0 && !state.draw);
   $('#stage').classList.toggle('setmode', state.mode === 'set');
   svg.classList.toggle('placing', state.tool !== 'select' && state.tool !== 'pan');
   svg.classList.toggle('panning', state.tool === 'pan' || spaceDown);
@@ -857,7 +1023,7 @@ function renderCanvas() {
 }
 function updateHint() {
   let t = '';
-  const loc = project && locById(scene().locationId);
+  const loc = project && locById(cv().locationId);
   if (state.tool === 'walls') t = state.draw ? 'Click to add corners · <kbd>Shift</kbd> = 45° · click the first corner to close · double-click or <kbd>Enter</kbd> to finish · <kbd>Backspace</kbd> removes a corner'
     : 'Click to start a wall · <kbd>Shift</kbd> keeps lines at 45° · hold <kbd>Ctrl</kbd> to ignore the grid';
   else if (state.tool === 'room') t = 'Drag to draw a room · <kbd>Shift</kbd> for a square';
@@ -868,7 +1034,7 @@ function updateHint() {
 }
 
 function fitView() {
-  const W = svg.clientWidth || 800, H = svg.clientHeight || 600, b = bounds(scene(), false);
+  const W = svg.clientWidth || 800, H = svg.clientHeight || 600, b = bounds(cv(), false);
   if (!b) { view = { x:W/2, y:H/2, zoom:1 }; return; }
   const z = clamp(Math.min((W-160)/Math.max(b.w,1), (H-200)/Math.max(b.h,1)), .15, 1.6);
   view = { zoom:z, x:W/2-(b.x+b.w/2)*z, y:H/2-(b.y+b.h/2)*z + 10 };
@@ -910,6 +1076,8 @@ function buildChrome() {
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
   $('#addScene').innerHTML = ico('plus',15); $('#addScene').onclick = addScene;
   $('#impScript').innerHTML = ico('script',14); $('#impScript').onclick = openImport;
+  $('#addChar').innerHTML = ico('plus',15); $('#addChar').onclick = addCharacter;
+  $('#addScene').onclick = () => addScene();
   $('#projName').addEventListener('input', e => { project.name = e.target.value; save(); });
 
   $('#toolbar').addEventListener('click', e => {
@@ -948,7 +1116,7 @@ function buildToolbar() {
     else { const k = t.slice(5), p = PROPS[k]; html += tool(t, p.label + (p.key?`  ${p.key.toUpperCase()}`:''), miniIcon(mk('prop',k))); }
   }
   if (m === 'set' && project) {
-    const loc = locById(scene().locationId);
+    const loc = locById(cv().locationId);
     html += sep + `<button class="tool" id="tLoc" data-tip="Save or load a location">${ico('pin',16)}<span class="lbl">${loc ? esc(loc.name) : 'Location'}</span></button>`;
   }
   html += sep
@@ -960,7 +1128,7 @@ function buildToolbar() {
 }
 function applyMode(m) {
   if (state.mode !== m) {
-    if (state.mode === 'set' && project) checkLocationEdits(scene());
+    if (state.mode === 'set' && project) checkLocationEdits(cv());
     state.mode = m; state.multi = []; buildToolbar();
   }
   const o = project && state.sel && selObj();
@@ -993,7 +1161,7 @@ function setView(v) {
 
 // ---------- home (projects) ----------
 function thumbSVG(p) {
-  const sc = p.scenes.find(s => s.objects.length);
+  const sc = p.scenes.flatMap(s => s.setups || [s]).find(u => u.objects && u.objects.length);
   if (!sc) return `<span style="color:var(--dim);font-size:12px">No set yet</span>`;
   const b = bounds(sc, false), pad = 30;
   return `<svg viewBox="${b.x-pad} ${b.y-pad} ${b.w+pad*2} ${b.h+pad*2}" preserveAspectRatio="xMidYMid meet">${renderLayers({ clean:true, sc, thumb:true })}</svg>`;
@@ -1084,15 +1252,22 @@ function multiMenu() {
 }
 // for arrows: pt = index of the point right-clicked (or -1); addAt = world point where "add point" was asked for
 function objectMenu(o, pt, addAt) {
-  const sc = scene(), items = [];
+  const sc = scene(), u = cv(), items = [];
   const nameKey = o.kind === 'text' ? 'text' : o.type === 'arrow' ? 'label' : 'name';
   const typeLbl = o.type === 'prop' ? PROPS[o.kind].label : o.type === 'arrow' ? 'Arrow' : o.type[0].toUpperCase() + o.type.slice(1);
   const redraw = () => { refreshAll(); save(); };
   const set = fn => () => { pushUndo(); fn(); redraw(); };
-  items.push({ header: pt < 0 ? typeLbl : o.type === 'arrow' ? `Arrow · point ${pt+1}` : `${typeLbl} · mark ${pt+2}` });
-  items.push({ input:o[nameKey] || '', placeholder: o.type === 'arrow' ? 'Arrow label' : 'Name', onInput:v => { o[nameKey] = v; renderCanvas(); renderInspector(); renderSidebar(); save(); } });
-  items.push({ swatches: o.type === 'prop' ? PROP_COLORS.concat(o.kind==='light'||o.kind==='text'?['#ffd86b']:[]) : COLORS, current:o.color, onPick:c => { pushUndo(); o.color = c; redraw(); } });
+  const ch = o.type === 'actor' && charById(o.charId);
+  items.push({ header: pt < 0 ? (ch ? `Character · ${ch.name}` : typeLbl) : o.type === 'arrow' ? `Arrow · point ${pt+1}` : `${typeLbl} · mark ${pt+2}` });
+  items.push({ input:o[nameKey] || '', placeholder: o.type === 'arrow' ? 'Arrow label' : 'Name', onInput:v => { if (ch) { ch.name = v; syncCharacter(ch); } else o[nameKey] = v; renderCanvas(); renderInspector(); renderSidebar(); save(); } });
+  items.push({ swatches: o.type === 'prop' ? PROP_COLORS.concat(o.kind==='light'||o.kind==='text'?['#ffd86b']:[]) : COLORS, current:o.color, onPick:c => { pushUndo(); if (ch) { ch.color = c; syncCharacter(ch); } else o.color = c; redraw(); } });
   items.push('-');
+  if (o.type === 'actor') {
+    items.push({ label:'Shape', chips:Object.entries(SHAPES).map(([k, s]) => ({ label:s.label, on:shapeOf(o) === k, act:set(() => { if (ch) { ch.shape = k; syncCharacter(ch); } else o.shape = k; }) })) });
+    if (o.scale) items.push({ label:`Reset size (${Math.round(defaultScale(o)*100)}%)`, icon:'fit', act:set(() => delete o.scale) });
+    if (!ch) items.push({ label:'Save as character', icon:'users', act:() => saveAsCharacter(o) });
+    items.push('-');
+  }
   if (o.type === 'camera') {
     items.push({ label:'Lens (mm)', chips: LENSES.map(l => ({ label:String(l), on:o.lens === l, act:set(() => o.lens = l) })) });
     items.push({ label:'New shot from this camera', icon:'plus', act:() => addShot(o) });
@@ -1127,8 +1302,8 @@ function objectMenu(o, pt, addAt) {
     if (pt >= 0 && o.pts.length > 2) items.push({ label:'Delete this point', icon:'x', act:set(() => o.pts.splice(pt, 1)) });
     items.push('-');
   }
-  items.push({ label:'Bring to front', icon:'up', act:set(() => { sc.objects.splice(sc.objects.indexOf(o),1); sc.objects.push(o); }) });
-  items.push({ label:'Send to back', icon:'down', act:set(() => { sc.objects.splice(sc.objects.indexOf(o),1); sc.objects.unshift(o); }) });
+  items.push({ label:'Bring to front', icon:'up', act:set(() => { u.objects.splice(u.objects.indexOf(o),1); u.objects.push(o); }) });
+  items.push({ label:'Send to back', icon:'down', act:set(() => { u.objects.splice(u.objects.indexOf(o),1); u.objects.unshift(o); }) });
   items.push('-');
   items.push({ label:'Duplicate', icon:'copy', kbd:'Ctrl+D', act:duplicateSel });
   items.push({ label:'Delete', icon:'trash', kbd:'Del', danger:true, act:() => { state.sel.pt = -1; deleteSel(); } });
@@ -1139,12 +1314,13 @@ function canvasMenu(p) {
   const add = (type, kind) => () => {
     pushUndo(); const o = makeObject(type, kind, at.x, at.y);
     if (o.kind === 'door' || o.kind === 'window') applyWallSnap(o, 0, true);
-    scene().objects.push(o); select(o.id); state.shotId = null; refreshAll(); save();
+    cv().objects.push(o); select(o.id); state.shotId = null; refreshAll(); save();
   };
   const fit = { label:'Fit to view', icon:'fit', kbd:'F', act:() => { fitView(); renderCanvas(); } };
   if (state.mode === 'block') return [
     { header:'Blocking' },
     { label:'Add actor here', icon:'users', kbd:'A', act:add('actor') },
+    ...(project.characters.length ? [{ label:'Place a character here', chips:project.characters.map(c => ({ label:c.name, act:add('actor', c.id) })) }] : []),
     { label:'Add camera here', icon:'camera', kbd:'C', act:add('camera') },
     { label:'Add arrow here', icon:'arrow', kbd:'X', act:add('arrow') },
     { label:'Add light here', icon:'cone', kbd:'L', act:add('prop','light') },
@@ -1165,10 +1341,10 @@ function canvasMenu(p) {
 }
 
 // ---------- playback ----------
-function animated() { return scene().objects.some(o => o.path && o.path.length); }
+function animated() { return cv().objects.some(o => o.path && o.path.length); }
 function playDuration() {
   const s = curShot(); if (s && s.duration > 0) return s.duration;
-  const n = Math.max(0, ...scene().objects.map(o => (o.path||[]).length));
+  const n = Math.max(0, ...cv().objects.map(o => (o.path||[]).length));
   return Math.max(2, n*2);
 }
 let lastT = 0;
@@ -1212,11 +1388,11 @@ function constrainVec(d) { const a = Math.round(Math.atan2(d.y, d.x)/(Math.PI/4)
 function translateFrom(o, orig, dx, dy) {
   o.x = orig.x + dx; o.y = orig.y + dy;
   if (o.type === 'arrow') o.pts = orig.pts.map(q => ({ x:q.x+dx, y:q.y+dy }));
-  if (o.path) o.path = orig.path.map(q => ({ ...q, x:q.x+dx, y:q.y+dy }));
+  if (o.path) o.path = orig.path.map(q => ({ ...q, x:q.x+dx, y:q.y+dy, ...(q.via ? { via:q.via.map(v => ({ x:v.x+dx, y:v.y+dy })) } : {}) }));
 }
 function marqueeHits() {
   const d = state.draw, x0 = Math.min(d.a.x,d.b.x), x1 = Math.max(d.a.x,d.b.x), y0 = Math.min(d.a.y,d.b.y), y1 = Math.max(d.a.y,d.b.y);
-  return scene().objects.filter(o => {
+  return cv().objects.filter(o => {
     if (!isLive(o)) return false;
     const b = bounds({ objects:[o] }, false); if (!b) return false;
     if (o.kind === 'walls') return b.x >= x0 && b.x+b.w <= x1 && b.y >= y0 && b.y+b.h <= y1;   // rooms only when fully boxed
@@ -1234,7 +1410,7 @@ function finishArrow() {
   if (pts.length < 2) { renderCanvas(); return; }
   pushUndo();
   const o = makeObject('arrow', null, pts[0].x, pts[0].y); o.pts = pts;
-  scene().objects.push(o); select(o.id); state.shotId = null; state.tool = 'select';
+  cv().objects.push(o); select(o.id); state.shotId = null; state.tool = 'select';
   updateToolbar(); refreshAll(); save();
 }
 function insertArrowPoint(o, p) {
@@ -1251,7 +1427,7 @@ function wallSnapPt(p, e, excludeId, from) {
   if (!noSnap(e)) {
     let best = null, bd = 12/view.zoom;
     const cand = [];
-    for (const o of scene().objects) if (o.kind === 'walls' && o.id !== excludeId) for (const q of o.pts) cand.push(toWorldOf(o, q));
+    for (const o of cv().objects) if (o.kind === 'walls' && o.id !== excludeId) for (const q of o.pts) cand.push(toWorldOf(o, q));
     if (state.draw && state.draw.pts) cand.push(...state.draw.pts);
     for (const c of cand) { const d = Math.hypot(c.x-p.x, c.y-p.y); if (d < bd) { bd = d; best = c; } }
     if (best) return { x:best.x, y:best.y };
@@ -1279,7 +1455,7 @@ function createWalls(pts, closed) {
   const o = makeObject('prop','walls',cx,cy);
   o.pts = pts.map(q => ({ x:q.x-cx, y:q.y-cy })); o.closed = closed;
   if (closed && pts.length === 4) o.name = 'Room';
-  scene().objects.push(o); select(o.id); state.tool = 'select'; state.cursor = null;
+  cv().objects.push(o); select(o.id); state.tool = 'select'; state.cursor = null;
   updateToolbar(); refreshAll(); save();
 }
 
@@ -1309,22 +1485,28 @@ svg.addEventListener('pointerdown', e => {
     const [type, kind] = state.tool.split(':');
     const o = makeObject(type, kind, sp.x, sp.y);
     if (o.kind === 'door' || o.kind === 'window') applyWallSnap(o, 0, true);
-    sc.objects.push(o); select(o.id); state.shotId = null;
+    cv().objects.push(o); select(o.id); state.shotId = null;
     if (!e.shiftKey) state.tool = 'select';
     updateToolbar(); refreshAll(); save();
     drag = { mode:'move', id:o.id, pt:-1, p0:p, start:{ x:o.x, y:o.y }, orig:deep(o), sx:e.clientX, sy:e.clientY, snap:null, moved:true, rot0:o.rot };
     return;
   }
-  const h = e.target.closest('[data-handle]');
-  if (h && state.sel) {
-    const o = selObj(); let mode = h.dataset.handle, vi = +h.dataset.vi, snap = snapshot(), moved = false;
-    if (mode === 'vm' || mode === 'am') { // drag a "+" to insert a wall corner / arrow point
+  // rotate/resize come from the element clicked; points use the nearest handle, so a near miss still grabs the point
+  // instead of moving the whole object or starting a selection box
+  const h = e.target.closest('[data-handle]'), so = state.sel && selObj();
+  let hd = h && ['rot','resize','aresize'].includes(h.dataset.handle) ? { mode:h.dataset.handle } : null;
+  if (!hd && so) hd = nearestHandle(so, p);
+  if (hd && so) {
+    const o = so; let { mode, vi, seg } = hd, snap = snapshot(), moved = false;
+    if (mode === 'vm' || mode === 'am' || mode === 'bm') { // drag a "+" to insert a wall corner / arrow point / bend point
       pushUndo(snap); snap = null; moved = true;
-      if (mode === 'vm') { const a = o.pts[vi], b = o.pts[(vi+1) % o.pts.length]; o.pts.splice(vi+1, 0, { x:(a.x+b.x)/2, y:(a.y+b.y)/2 }); mode = 'v'; }
-      else { const m = arrowPath(o).mids[vi]; o.pts.splice(vi+1, 0, { x:Math.round(m.x), y:Math.round(m.y) }); mode = 'ap'; }
-      vi++; renderCanvas();
+      if (mode === 'vm') { const a = o.pts[vi], b = o.pts[(vi+1) % o.pts.length]; o.pts.splice(vi+1, 0, { x:(a.x+b.x)/2, y:(a.y+b.y)/2 }); mode = 'v'; vi++; }
+      else if (mode === 'am') { const m = arrowPath(o).mids[vi]; o.pts.splice(vi+1, 0, { x:Math.round(m.x), y:Math.round(m.y) }); mode = 'ap'; vi++; }
+      else { const b = o.path[seg], m = bez(splineSegs(movePts(poses(o)[seg], b))[vi], .5); (b.via = b.via || []).splice(vi, 0, { x:Math.round(m.x), y:Math.round(m.y) }); mode = 'bp'; }
+      renderCanvas();
     }
-    drag = { mode, id:o.id, pt:state.sel.pt, vi, sx:e.clientX, sy:e.clientY, snap, moved, w0:o.w, h0:o.h };
+    drag = { mode, id:o.id, pt:state.sel.pt, vi, seg, sx:e.clientX, sy:e.clientY, snap, moved, w0:o.w, h0:o.h };
+    if (mode === 'aresize') renderCanvas();
     return;
   }
   const g = e.target.closest('[data-id]');
@@ -1415,6 +1597,14 @@ svg.addEventListener('pointermove', e => {
       const q = e.shiftKey && nb ? constrain45(nb, p, e) : { x:snapv(p.x,e), y:snapv(p.y,e) };
       o.pts[drag.vi] = q; if (drag.vi === 0) { o.x = q.x; o.y = q.y; } break;
     }
+    case 'bp': { const v = o.path[drag.seg] && o.path[drag.seg].via; if (v) v[drag.vi] = { x:snapv(p.x,e), y:snapv(p.y,e) }; break; }
+    case 'aresize': {   // actors scale uniformly in 5% steps; landing on the default size clears the override
+      const S = SHAPES[shapeOf(o)], d = Math.hypot(p.x-tgt.x, p.y-tgt.y) - 5/view.zoom;
+      let s = clamp(d / Math.hypot(S.hw, S.hh), .3, 4);
+      s = noSnap(e) ? Math.round(s*100)/100 : Math.round(s*20)/20;
+      if (Math.abs(s - defaultScale(o)) < .001) delete o.scale; else o.scale = s;
+      break;
+    }
   }
   renderCanvas();
 });
@@ -1432,8 +1622,10 @@ svg.addEventListener('pointerup', () => {
   }
   if (drag && drag.mode === 'marquee') { state.draw = null; drag = null; refreshAll(); return; }
   if (drag && drag.toggleOff && !drag.moved) { setMulti(state.multi.filter(x => x !== drag.toggleOff)); drag = null; refreshAll(); return; }
-  if (drag && drag.moved && drag.mode !== 'pan') { save(); renderInspector(); updatePlaybar(); renderCanvas(); }
+  if (drag && drag.moved && drag.mode !== 'pan') { save(); renderInspector(); updatePlaybar(); }
+  const redraw = drag && (drag.moved || drag.mode === 'aresize');
   drag = null;
+  if (redraw) renderCanvas();
 });
 svg.addEventListener('wheel', e => {
   e.preventDefault();
@@ -1455,14 +1647,19 @@ svg.addEventListener('contextmenu', e => {
   }
   if (state.tool !== 'select' && state.tool !== 'pan') setTool('select');
   const p = toWorld(e);
-  const v = e.target.closest('[data-handle="v"]'), o0 = selObj();
-  if (v && o0) {
-    const vi = +v.dataset.vi;
+  const o0 = selObj(), hn = o0 && nearestHandle(o0, p);
+  if (hn && hn.mode === 'v') {
+    const vi = hn.vi;
     return showMenu(e.clientX, e.clientY, [{ header:'Corner' }, { label:'Delete corner', icon:'trash', danger:true, disabled:o0.pts.length <= 2,
       act:() => { pushUndo(); o0.pts.splice(vi,1); if (o0.pts.length < 3) o0.closed = false; refreshAll(); save(); } }]);
   }
-  const ap = e.target.closest('[data-handle="ap"]');
-  if (ap && o0) return showMenu(e.clientX, e.clientY, objectMenu(o0, +ap.dataset.vi));
+  if (hn && hn.mode === 'ap') return showMenu(e.clientX, e.clientY, objectMenu(o0, hn.vi));
+  if (hn && hn.mode === 'bp') {
+    const b = o0.path[hn.seg];
+    return showMenu(e.clientX, e.clientY, [{ header:`Bend point · move to mark ${hn.seg+2}` },
+      { label:'Remove bend point', icon:'x', act:() => { pushUndo(); b.via.splice(hn.vi, 1); if (!b.via.length) delete b.via; refreshAll(); save(); } },
+      { label:'Straighten this move', icon:'minus', act:() => { pushUndo(); delete b.via; refreshAll(); save(); } }]);
+  }
   const g = e.target.closest('[data-id]');
   if (g) {
     const o = obj(g.dataset.id); if (!o) return;
@@ -1487,13 +1684,13 @@ svg.addEventListener('contextmenu', e => {
 function centerWorld() { return { x:(svg.clientWidth/2-view.x)/view.zoom, y:(svg.clientHeight/2-view.y)/view.zoom }; }
 function deleteSel() {
   if (state.multi.length) {
-    pushUndo(); const ids = state.multi; scene().objects = scene().objects.filter(x => !ids.includes(x.id)); select(null);
+    pushUndo(); const ids = state.multi; cv().objects = cv().objects.filter(x => !ids.includes(x.id)); select(null);
     refreshAll(); save(); return;
   }
   const o = selObj(); if (!o) return;
   pushUndo();
   if (state.sel.pt >= 0 && o.type !== 'arrow') { o.path.splice(state.sel.pt, 1); state.sel.pt = Math.min(state.sel.pt, o.path.length-1); }
-  else { scene().objects = scene().objects.filter(x => x !== o); state.sel = null; }
+  else { cv().objects = cv().objects.filter(x => x !== o); state.sel = null; }
   refreshAll(); save();
 }
 function duplicateSel() {
@@ -1502,11 +1699,11 @@ function duplicateSel() {
   const copies = ids.map(id => {
     const o = obj(id), c = deep(o); c.id = uid(); translateFrom(c, o, GRID*2, GRID*2);
     if (ids.length === 1 && (o.type === 'actor' || o.type === 'camera')) { const fresh = makeObject(o.type, null, 0, 0); c.name = fresh.name; if (o.type === 'camera') c.color = fresh.color; }
-    scene().objects.push(c); return c.id;
+    cv().objects.push(c); return c.id;
   });
   setMulti(copies); refreshAll(); save();
 }
-function selectAll() { setMulti(scene().objects.filter(isLive).map(o => o.id)); refreshAll(); }
+function selectAll() { setMulti(cv().objects.filter(isLive).map(o => o.id)); refreshAll(); }
 function addMove() {
   const o = selObj();
   if (!o || o.type === 'arrow' || o.kind === 'walls') { toast('Select an actor or camera first'); return; }
@@ -1523,35 +1720,107 @@ function nudge(dx, dy) {
   renderCanvas(); renderInspector(); save();
 }
 
+// leaving a canvas (scene or setup): remember its view, ask about edited locations, reset selection
+function leaveCanvas() {
+  if (state.mode === 'set') { const prev = cv(); setTimeout(() => checkLocationEdits(prev), 0); }
+  views[cv().id] = { ...view };
+  state.sel = null; state.multi = []; state.playT = null; state.playing = false; state.draw = null;
+}
+function enterCanvas() {
+  if (!hasSet(cv())) applyMode('set');
+  else if (state.mode === 'set') buildToolbar();
+  if (views[cv().id]) view = { ...views[cv().id] }; else fitView();
+}
 function switchScene(id) {
   if (id === state.sceneId) return;
-  if (state.sceneId && state.mode === 'set') { const prev = scene(); setTimeout(() => checkLocationEdits(prev), 0); }
-  views[state.sceneId] = { ...view };
-  state.sceneId = id; state.sel = null; state.multi = []; state.playT = null; state.playing = false; state.draw = null;
-  if (!hasSet(scene())) applyMode('set');
-  else if (state.mode === 'set') buildToolbar();
-  if (views[id]) view = { ...views[id] }; else fitView();
+  if (state.sceneId && project.scenes.some(s => s.id === state.sceneId)) leaveCanvas();
+  state.sceneId = id; enterCanvas();
 }
+function switchSetup(sc, id) {
+  if (sc.id !== state.sceneId) { switchScene(sc.id); }
+  if (sc.setupId === id) return;
+  leaveCanvas(); sc.setupId = id; enterCanvas();
+  if (state.shotId) { const s = curShot(); if (s && shotSetup(sc, s).id !== id) state.shotId = null; }
+}
+// every setup (in any scene) that uses a saved location
+const setupsUsing = (loc, except) => project.scenes.flatMap(s => s.setups).filter(u => u.locationId === loc.id && u !== except);
+const scenesUsingCount = loc => project.scenes.filter(s => s.setups.some(u => u.locationId === loc.id)).length;
 // new scenes ask which saved location to start from
-function addScene() {
-  if (!(project.locations || []).length) return createScene(null);
+function addScene(after) {
+  if (!(project.locations || []).length) return createScene(null, after);
   const locs = project.locations.map(l => {
-    const n = project.scenes.filter(s => s.locationId === l.id).length;
+    const n = scenesUsingCount(l);
     return `<button class="loc-card" data-loc="${l.id}"><div class="thumb">${locThumb(l)}</div><div class="meta"><b>${esc(l.name)}</b><span>${n ? `used in ${plural(n,'scene')}` : 'not used yet'}</span></div></button>`;
   }).join('');
   $('#modalCard').innerHTML = `<div class="ih"><h2>New scene — pick a location</h2><button class="ib" data-close>${ico('x')}</button></div>
     <div class="loc-grid"><button class="loc-card" data-loc=""><div class="thumb">${ico('plus',22)}</div><div class="meta"><b>Blank set</b><span>Build a new set</span></div></button>${locs}</div>`;
   $('#modal').classList.add('show');
-  $('#modalCard').querySelectorAll('[data-loc]').forEach(b => b.onclick = () => { $('#modal').classList.remove('show'); createScene(locById(b.dataset.loc)); });
+  $('#modalCard').querySelectorAll('[data-loc]').forEach(b => b.onclick = () => { $('#modal').classList.remove('show'); createScene(locById(b.dataset.loc), after); });
 }
-function createScene(loc) {
+// after = insert right after this scene with the next lettered number (e.g. 1A)
+function createScene(loc, after) {
   pushUndo();
-  const s = { id:uid(), name: loc ? `INT. ${loc.name} – DAY` : 'INT. LOCATION – DAY', notes:'', objects:[], shots:[], open:true };
-  if (loc) applyLocation(s, loc);
-  project.scenes.push(s); switchScene(s.id); state.shotId = null; state.sceneSelected = true;
+  const s = makeScene(loc ? `INT. ${loc.name} – DAY` : 'INT. LOCATION – DAY');
+  if (loc) applyLocation(s.setups[0], loc);
+  if (after) { s.num = insertNumAfter(after); project.scenes.splice(sceneIndex(after)+1, 0, s); }
+  else project.scenes.push(s);
+  switchScene(s.id); state.shotId = null; state.sceneSelected = true;
   if (loc) { applyMode('block'); fitView(); } else view = { x:svg.clientWidth/2, y:svg.clientHeight/2, zoom:1 };
   refreshAll(); save();
   setTimeout(()=>{ const f = $('#inspector [data-k=name]'); if (f) { f.focus(); f.select(); } }, 0);
+}
+// a fresh canvas inside the same scene: 'set' copies only the set, 'continue' also brings actors and
+// cameras in at the positions they ended on, 'blank' starts empty (e.g. a different location)
+function addSetup(sc, how) {
+  pushUndo();
+  const from = setupOf(sc), u = makeSetup(`Setup ${sc.setups.length+1}`);
+  if (how !== 'blank') { u.objects = deep(setObjects(from)).map(o => ({ ...o, id:uid() })); u.locationId = from.locationId; }
+  if (how === 'continue') for (const o of from.objects) {
+    if (layerOf(o) === 'set' || o.type === 'arrow') continue;
+    const end = poses(o).slice(-1)[0], c = deep(o); c.id = uid(); c.x = end.x; c.y = end.y; c.rot = end.rot; c.path = [];
+    u.objects.push(c);
+  }
+  sc.setups.splice(sc.setups.indexOf(from)+1, 0, u);
+  switchScene(sc.id); leaveCanvas(); sc.setupId = u.id; state.shotId = null; state.sceneSelected = true;
+  views[u.id] = { ...view };   // keep the same framing so the new setup lines up with the last one
+  enterCanvas(); refreshAll(); save();
+  toast(how === 'continue' ? `${u.name}: everyone starts where they ended` : `${u.name} created`);
+}
+function deleteSetup(sc, u) {
+  if (sc.setups.length < 2) return;
+  const shots = sc.shots.filter(s => shotSetup(sc, s) === u);
+  if (!confirm(`Delete ${u.name}${shots.length ? ` and its ${plural(shots.length,'shot')}` : ''}?`)) return;
+  pushUndo();
+  sc.shots = sc.shots.filter(s => !shots.includes(s));
+  const i = sc.setups.indexOf(u); sc.setups.splice(i, 1);
+  if (sc.setupId === u.id) { state.sel = null; state.multi = []; sc.setupId = sc.setups[Math.max(0, i-1)].id; if (sc.id === state.sceneId) enterCanvas(); }
+  if (state.shotId && !curShot()) state.shotId = null;
+  refreshAll(); save();
+}
+function duplicateSetup(sc, u) {
+  pushUndo();
+  const c = deep(u), map = {}; c.id = uid(); c.name = `${u.name} copy`;
+  c.objects.forEach(o => { const n = uid(); map[o.id] = n; o.id = n; });
+  sc.setups.splice(sc.setups.indexOf(u)+1, 0, c);
+  views[c.id] = views[u.id] ? { ...views[u.id] } : undefined;
+  switchSetup(sc, c.id); refreshAll(); save();
+}
+function setupMenu(sc, u, x, y) {
+  const n = sc.shots.filter(s => shotSetup(sc, s) === u).length;
+  showMenu(x, y, [
+    { header:`${u.name} · ${plural(n,'shot')}` },
+    { input:u.name, placeholder:'Setup name', onInput:v => { u.name = v; renderSidebar(); save(); } },
+    { label:'Duplicate setup', icon:'copy', act:() => duplicateSetup(sc, u) },
+    { label:'Delete setup', icon:'trash', danger:true, disabled:sc.setups.length < 2, act:() => deleteSetup(sc, u) },
+  ]);
+}
+function newSetupMenu(sc, x, y) {
+  showMenu(x, y, [
+    { header:'New setup in this scene' },
+    { label:'Continue from here', icon:'route', act:() => addSetup(sc, 'continue') },
+    { label:'Same set, no blocking', icon:'brick', act:() => addSetup(sc, 'set') },
+    { label:'Blank (another location)', icon:'plus', act:() => addSetup(sc, 'blank') },
+  ]);
 }
 
 // ---------- locations (saved sets) ----------
@@ -1568,10 +1837,11 @@ function applyLocation(sc, loc) {
   sc.objects = [...deep(loc.objects).map(o => ({ ...o, id:uid() })), ...sc.objects.filter(o => layerOf(o) !== 'set')];
   sc.locationId = loc.id;
 }
-function scenesUsing(loc, except) { return project.scenes.filter(s => s.locationId === loc.id && s !== except); }
+// (the functions below take a setup: the canvas whose set is being saved, loaded or compared)
+const canvasLabel = u => { const sc = sceneOfSetup(u); return sc ? `scene ${sceneNo(sc)}${sc.setups.length > 1 ? ` (${u.name})` : ''}` : 'this scene'; };
 function saveAsLocation(sc) {
   if (!setObjects(sc).length) { toast('Build the set first, then save it as a location'); return; }
-  askName('Save set as a location', locationName(sc.name) || 'NEW LOCATION', name => {
+  askName('Save set as a location', locationName((sceneOfSetup(sc) || {}).name) || 'NEW LOCATION', name => {
     pushUndo();
     const loc = { id:uid(), name:name.toUpperCase(), objects:deep(setObjects(sc)) };
     project.locations.push(loc); sc.locationId = loc.id;
@@ -1579,30 +1849,30 @@ function saveAsLocation(sc) {
   });
 }
 function loadLocation(sc, loc) {
-  if (setObjects(sc).length && !confirm(`Replace this scene's set with ${loc.name}? Actors, cameras and arrows stay where they are.`)) return;
+  if (setObjects(sc).length && !confirm(`Replace the set in ${canvasLabel(sc)} with ${loc.name}? Actors, cameras and arrows stay where they are.`)) return;
   pushUndo(); applyLocation(sc, loc); state.sel = null; state.multi = [];
   buildToolbar(); fitView(); refreshAll(); save();
 }
 function updateLocation(sc, loc) {
   loc.objects = deep(setObjects(sc));
-  scenesUsing(loc, sc).forEach(s => applyLocation(s, loc));
+  setupsUsing(loc, sc).forEach(u => applyLocation(u, loc));
 }
 // after editing a linked set, offer to push the change to the location and every scene that uses it
 function checkLocationEdits(sc) {
   const loc = sc && locById(sc.locationId);
   if (!loc || setSig(setObjects(sc)) === setSig(loc.objects) || $('#modal').classList.contains('show')) return false;
-  const others = scenesUsing(loc, sc).length;
+  const others = setupsUsing(loc, sc).length;
   $('#modalCard').innerHTML = `<div class="ih"><h2>Update location ${esc(loc.name)}?</h2><button class="ib" data-close>${ico('x')}</button></div>
-    <p style="color:var(--muted);margin:0 0 16px">You changed the set in scene ${sceneIndex(sc)+1}. ${others ? `${plural(others,'other scene')} also ${others===1?'uses':'use'} this location.` : 'No other scenes use this location yet.'}</p>
+    <p style="color:var(--muted);margin:0 0 16px">You changed the set in ${esc(canvasLabel(sc))}. ${others ? `It's also used in ${others} other ${others===1?'scene or setup':'scenes or setups'}.` : 'Nothing else uses this location yet.'}</p>
     <div class="btns" style="flex-direction:column;align-items:stretch">
-      <button class="btn primary" data-la="all">${ico('check',14)} Update ${esc(loc.name)}${others ? ` and all ${plural(others,'scene')}` : ''}</button>
+      <button class="btn primary" data-la="all">${ico('check',14)} Update ${esc(loc.name)}${others ? ` everywhere (${others+1})` : ''}</button>
       <button class="btn" data-la="new">${ico('plus',14)} Save as a new location</button>
       <button class="btn" data-la="one">Keep the change in this scene only</button>
     </div>`;
   $('#modal').classList.add('show');
   $('#modalCard').querySelectorAll('[data-la]').forEach(b => b.onclick = () => {
     $('#modal').classList.remove('show');
-    if (b.dataset.la === 'all') { pushUndo(); updateLocation(sc, loc); toast(`Updated ${loc.name}${others ? ` in ${plural(others+1,'scene')}` : ''}`); }
+    if (b.dataset.la === 'all') { pushUndo(); updateLocation(sc, loc); toast(`Updated ${loc.name}${others ? ` in ${others+1} places` : ''}`); }
     else if (b.dataset.la === 'new') return saveAsLocation(sc);
     else { pushUndo(); sc.locationId = null; }
     buildToolbar(); refreshAll(); save();
@@ -1620,7 +1890,7 @@ function askName(title, value, done) {
   $('#askOk').onclick = ok; inp.onkeydown = e => { if (e.key === 'Enter') ok(); };
 }
 function locationMenu(x, y) {
-  const sc = scene(), loc = locById(sc.locationId), dirty = loc && setSig(setObjects(sc)) !== setSig(loc.objects);
+  const sc = cv(), loc = locById(sc.locationId), dirty = loc && setSig(setObjects(sc)) !== setSig(loc.objects);
   const items = [{ header: loc ? `Location · ${loc.name}` : 'Location' }];
   if (loc) {
     items.push({ input:loc.name, placeholder:'Location name', onInput:v => { loc.name = v.toUpperCase(); buildToolbar(); renderSidebar(); save(); } });
@@ -1633,27 +1903,30 @@ function locationMenu(x, y) {
   showMenu(x, y, items);
 }
 function addShot(cam) {
-  const sc = scene(); pushUndo();
+  const sc = scene(), u = cv(); pushUndo();
   if (!cam) { const o = selObj(); if (o && o.type === 'camera') cam = o; }
   if (!cam) {
-    const c = centerWorld(), n = sc.objects.filter(o=>o.type==='camera').length;
+    const c = centerWorld(), n = u.objects.filter(o=>o.type==='camera').length;
     cam = makeObject('camera', null, Math.round((c.x + n*GRID)/GRID)*GRID, Math.round((c.y + 100)/GRID)*GRID);
-    sc.objects.push(cam);
+    u.objects.push(cam);
   }
-  const shot = { id:uid(), cameraId:cam.id, size:'MS', angle:'Eye level', move:'Static', duration:0, desc:'', notes:'', done:false };
-  sc.shots.push(shot); sc.open = true; state.shotId = shot.id; state.sel = null; state.sceneSelected = false;
+  const shot = { id:uid(), cameraId:cam.id, setupId:u.id, size:'MS', angle:'Eye level', move:'Static', duration:0, desc:'', notes:'', done:false };
+  // keep a setup's shots together: a new shot goes after the last shot of this setup
+  const lastOfSetup = sc.shots.map(s => shotSetup(sc, s) === u).lastIndexOf(true);
+  sc.shots.splice(lastOfSetup >= 0 ? lastOfSetup+1 : sc.shots.length, 0, shot);
+  sc.open = true; state.shotId = shot.id; state.sel = null; state.sceneSelected = false;
   if (state.mode !== 'block') applyMode('block');
   refreshAll(); save();
   setTimeout(()=>{ const f = $('#inspector [data-k=desc]'); if (f) f.focus(); }, 0);
 }
 function moveItem(arr, item, d) { const i = arr.indexOf(item), j = i+d; if (j < 0 || j >= arr.length) return false; pushUndo(); arr.splice(i,1); arr.splice(j,0,item); refreshAll(); save(); return true; }
-function duplicateShot(s, sc) { pushUndo(); const c = deep(s); c.id = uid(); c.done = false; sc.shots.splice(sc.shots.indexOf(s)+1, 0, c); switchScene(sc.id); state.shotId = c.id; state.sel = null; refreshAll(); save(); }
+function duplicateShot(s, sc) { pushUndo(); const c = deep(s); c.id = uid(); c.done = false; sc.shots.splice(sc.shots.indexOf(s)+1, 0, c); selectShot(c.id); save(); }
 function deleteShot(s, sc) { pushUndo(); sc.shots = sc.shots.filter(x => x !== s); if (state.shotId === s.id) { state.shotId = null; state.sceneSelected = true; } refreshAll(); save(); }
 function duplicateScene(sc) {
   pushUndo();
-  const c = deep(sc), map = {}; c.id = uid(); c.name += ' (copy)';
-  c.objects.forEach(o => { const n = uid(); map[o.id] = n; o.id = n; });
-  c.shots.forEach(s => { s.id = uid(); s.cameraId = map[s.cameraId] || null; });
+  const c = deep(sc), map = {}; c.id = uid(); c.name += ' (copy)'; delete c.num;
+  c.setups.forEach(u => { const nu = uid(); map[u.id] = nu; if (c.setupId === u.id) c.setupId = nu; u.id = nu; u.objects.forEach(o => { const n = uid(); map[o.id] = n; o.id = n; }); });
+  c.shots.forEach(s => { s.id = uid(); s.cameraId = map[s.cameraId] || null; s.setupId = map[s.setupId] || null; });
   project.scenes.splice(sceneIndex(sc)+1, 0, c); switchScene(c.id); state.sceneSelected = true; state.shotId = null; refreshAll(); save();
 }
 function deleteScene(sc) {
@@ -1665,40 +1938,96 @@ function deleteScene(sc) {
 
 // ---------- sidebar ----------
 function renderSidebar() {
-  $('#scenes').innerHTML = project.scenes.map((sc, i) => {
-    const active = sc.id === state.sceneId;
+  $('#scenes').innerHTML = project.scenes.map(sc => {
+    const active = sc.id === state.sceneId, multi = sc.setups.length > 1, cur = setupOf(sc);
     const shots = sc.shots.map(s => {
-      const cam = sc.objects.find(o=>o.id===s.cameraId);
+      const cam = camOf(sc, s), su = shotSetup(sc, s);
       return `<div class="shot ${s.id===state.shotId?'sel':''}" data-act="shot" data-id="${s.id}" draggable="true">
         <span class="sn">${shotNum(sc,s)}</span><span class="tag">${esc(s.size)}</span>
-        <span class="sd">${esc(s.desc || `${cam?cam.name:'No camera'} · ${s.move}`)}</span>${s.done?`<span class="done">✓</span>`:''}</div>`;
+        <span class="sd">${esc(s.desc || `${cam?cam.name:'No camera'} · ${s.move}`)}</span>${multi ? `<span class="stag ${su === cur && active ? 'on' : ''}" title="${esc(su.name)}">${sc.setups.indexOf(su)+1}</span>` : ''}${s.done?`<span class="done">✓</span>`:''}</div>`;
     }).join('');
+    const locs = [...new Set(sc.setups.map(u => u.locationId).filter(Boolean))].map(locById).filter(Boolean);
+    // setup tabs show once a scene has more than one setup, or on the open scene so a new one can be added
+    const setups = sc.open && (multi || active) ? `<div class="setups">${multi ? sc.setups.map((u, j) =>
+        `<button class="su ${active && u === cur ? 'on' : ''}" data-act="setup" data-id="${sc.id}" data-su="${u.id}" title="${esc(u.name)}">${j+1}<span>${esc(u.name.replace(/^Setup \d+$/, ''))}</span></button>`).join('') : ''}
+        <button class="su add" data-act="addsetup" data-id="${sc.id}" data-tip="New setup — a fresh canvas for this scene">${ico('plus',12)}${multi ? '' : '<span>Setup</span>'}</button></div>` : '';
     return `<div class="scene ${active?'active':''} ${active&&state.sceneSelected?'selected':''} ${sc.open?'open':''}">
       <div class="scene-head" data-act="scene" data-id="${sc.id}">
         <span class="caret" data-act="toggle" data-id="${sc.id}">${ico('chev',13)}</span>
-        <span class="snum">${i+1}</span><span class="sname" title="${esc(sc.name)}">${esc(sc.name)}</span>${locById(sc.locationId) ? `<span class="lpin" title="Uses location ${esc(locById(sc.locationId).name)}">${ico('pin',12)}</span>` : ''}<span class="count">${sc.shots.length}</span>
+        <span class="snum">${esc(sceneNo(sc))}</span><span class="sname" title="${esc(sc.name)}">${esc(sc.name)}</span>${locs.length ? `<span class="lpin" title="Uses ${esc(locs.map(l => l.name).join(', '))}">${ico('pin',12)}</span>` : ''}<span class="count">${sc.shots.length}</span>
       </div>
-      ${sc.open ? `<div class="shots">${shots}<button class="addshot" data-act="addshot" data-id="${sc.id}">${ico('plus',13)} Add shot</button></div>` : ''}
+      ${sc.open ? `<div class="shots">${setups}${shots}<button class="addshot" data-act="addshot" data-id="${sc.id}">${ico('plus',13)} Add shot${multi && active ? ` to ${esc(cur.name)}` : ''}</button></div>` : ''}
     </div>`;
   }).join('');
   const locs = project.locations || [];
-  $('#locs').innerHTML = locs.length ? locs.map(l => `<div class="loc-row" data-loc="${l.id}">${ico('pin',13)}<span class="sname">${esc(l.name)}</span><span class="count">${project.scenes.filter(s => s.locationId === l.id).length}</span></div>`).join('')
+  $('#locs').innerHTML = locs.length ? locs.map(l => `<div class="loc-row" data-loc="${l.id}">${ico('pin',13)}<span class="sname">${esc(l.name)}</span><span class="count">${scenesUsingCount(l)}</span></div>`).join('')
     : `<div class="hint" style="padding:0 10px">Build a set, then use <b>Location → Save set</b> in Set mode to reuse it in other scenes.</div>`;
+  const chars = project.characters || [];
+  $('#chars').innerHTML = chars.length ? chars.map(c => `<div class="loc-row char-row" data-char="${c.id}" draggable="true" title="Drag onto the canvas to place">
+      <span class="cdot" style="background:${c.color}"></span><span class="sname">${esc(c.name)}</span><span class="count">${SHAPES[c.shape] && c.shape !== 'person' ? SHAPES[c.shape].label : ''}${c.scale ? ` ${Math.round(c.scale*100)}%` : ''}</span></div>`).join('')
+    : `<div class="hint" style="padding:0 10px">Select an actor and choose <b>Save as character</b>, or press <b>+</b>, to reuse a person (or animal) with their colour, shape and size.</div>`;
 }
 function locRowMenu(id, x, y) {
-  const l = locById(id), sc = scene(), n = project.scenes.filter(s => s.locationId === id).length;
+  const l = locById(id), u = cv(), n = scenesUsingCount(l);
   showMenu(x, y, [
     { header:`Location · ${plural(n,'scene')}` },
     { input:l.name, placeholder:'Location name', onInput:v => { l.name = v.toUpperCase(); renderSidebar(); buildToolbar(); save(); } },
-    { label:`Load into scene ${sceneIndex(sc)+1}`, icon:'pin', disabled:sc.locationId === id, act:() => loadLocation(sc, l) },
+    { label:`Load into ${canvasLabel(u)}`, icon:'pin', disabled:u.locationId === id, act:() => loadLocation(u, l) },
     { label:'New scene here', icon:'plus', act:() => createScene(l) },
     '-',
     { label:'Delete location', icon:'trash', danger:true, act:() => {
       if (!confirm(`Delete location ${l.name}? Scenes using it keep their sets.`)) return;
-      pushUndo(); project.locations = project.locations.filter(x => x !== l); project.scenes.forEach(s => { if (s.locationId === id) s.locationId = null; });
+      pushUndo(); project.locations = project.locations.filter(x => x !== l); project.scenes.forEach(s => s.setups.forEach(u => { if (u.locationId === id) u.locationId = null; }));
       buildToolbar(); refreshAll(); save(); } },
   ]);
 }
+
+// ---------- characters (saved actors) ----------
+function newCharacter(from) {
+  const n = project.characters.length;
+  return { id:uid(), name: from ? from.name : `CHARACTER ${n+1}`, color: from ? from.color : COLORS[n % COLORS.length], shape: from ? shapeOf(from) : 'person', ...(from && from.scale ? { scale:from.scale } : {}) };
+}
+function saveAsCharacter(o) {
+  askName('Save as character', (o.name || '').toUpperCase(), name => {
+    pushUndo();
+    const ch = newCharacter(o); ch.name = name.toUpperCase();
+    project.characters.push(ch); o.charId = ch.id; delete o.scale; syncCharacter(ch);
+    refreshAll(); save(); toast(`Saved ${ch.name} — drag from the sidebar to place them in other scenes`);
+  });
+}
+function addCharacter() { askName('New character', '', name => { pushUndo(); const ch = newCharacter(); ch.name = name.toUpperCase(); project.characters.push(ch); renderSidebar(); save(); charMenu(ch.id); }); }
+function placeCharacter(ch, at) {
+  pushUndo();
+  const p = at || centerWorld(), o = makeObject('actor', ch.id, Math.round(p.x/GRID)*GRID, Math.round(p.y/GRID)*GRID);
+  if (state.mode !== 'block') applyMode('block');
+  cv().objects.push(o); select(o.id); state.shotId = null; refreshAll(); save();
+}
+function charMenu(id, x, y) {
+  const ch = charById(id); if (!ch) return;
+  if (x == null) { const r = document.querySelector(`[data-char="${id}"]`)?.getBoundingClientRect(); x = r ? r.left + 20 : 200; y = r ? r.bottom + 2 : 200; }
+  const uses = project.scenes.filter(s => allObjects(s).some(o => o.charId === id)).length;
+  const set = fn => () => { pushUndo(); fn(); syncCharacter(ch); refreshAll(); save(); };
+  const def = ch.scale || SHAPES[ch.shape].scale;
+  showMenu(x, y, [
+    { header:`Character · in ${plural(uses,'scene')}` },
+    { input:ch.name, placeholder:'Name', onInput:v => { ch.name = v.toUpperCase(); syncCharacter(ch); renderSidebar(); renderCanvas(); renderInspector(); save(); } },
+    { swatches:COLORS, current:ch.color, onPick:c => { pushUndo(); ch.color = c; syncCharacter(ch); refreshAll(); save(); } },
+    { label:'Shape', chips:Object.entries(SHAPES).map(([k, s]) => ({ label:s.label, on:ch.shape === k, act:set(() => { ch.shape = k; delete ch.scale; }) })) },
+    { label:'Default size', chips:[.5,.7,.85,1,1.25,1.5,2].map(v => ({ label:`${Math.round(v*100)}%`, on:Math.abs(def - v) < .001, act:set(() => { if (Math.abs(v - SHAPES[ch.shape].scale) < .001) delete ch.scale; else ch.scale = v; }) })) },
+    '-',
+    { label:`Place in ${canvasLabel(cv())}`, icon:'plus', act:() => placeCharacter(ch) },
+    { label:'Delete character', icon:'trash', danger:true, act:() => {
+      if (!confirm(`Delete ${ch.name}? Actors already placed stay, unlinked.`)) return;
+      pushUndo(); project.characters = project.characters.filter(c => c !== ch);
+      project.scenes.forEach(s => allObjects(s).forEach(o => { if (o.charId === id) delete o.charId; }));
+      refreshAll(); save(); } },
+  ]);
+}
+$('#chars').addEventListener('click', e => { const r = e.target.closest('[data-char]'); if (r) charMenu(r.dataset.char); });
+$('#chars').addEventListener('contextmenu', e => { const r = e.target.closest('[data-char]'); if (r) { e.preventDefault(); charMenu(r.dataset.char, e.clientX, e.clientY); } });
+$('#chars').addEventListener('dragstart', e => { const r = e.target.closest('[data-char]'); if (r) { e.dataTransfer.setData('text/x-overhead-char', r.dataset.char); e.dataTransfer.effectAllowed = 'copy'; } });
+svg.addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('text/x-overhead-char')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+svg.addEventListener('drop', e => { const id = e.dataTransfer.getData('text/x-overhead-char'); const ch = charById(id); if (!ch) return; e.preventDefault(); placeCharacter(ch, toWorld(e)); });
 $('#locs').addEventListener('click', e => { const r = e.target.closest('.loc-row'); if (r) { const b = r.getBoundingClientRect(); locRowMenu(r.dataset.loc, b.left + 20, b.bottom + 2); } });
 $('#locs').addEventListener('contextmenu', e => { const r = e.target.closest('.loc-row'); if (r) { e.preventDefault(); locRowMenu(r.dataset.loc, e.clientX, e.clientY); } });
 $('#scenes').addEventListener('click', e => {
@@ -1708,9 +2037,13 @@ $('#scenes').addEventListener('click', e => {
   else if (a.dataset.act === 'scene') { switchScene(id); state.shotId = null; state.sel = null; state.sceneSelected = true; refreshAll(); }
   else if (a.dataset.act === 'shot') selectShot(id);
   else if (a.dataset.act === 'addshot') { switchScene(id); addShot(); }
+  else if (a.dataset.act === 'setup') { const sc = project.scenes.find(x => x.id === id); switchSetup(sc, a.dataset.su); state.sel = null; state.sceneSelected = true; refreshAll(); }
+  else if (a.dataset.act === 'addsetup') { const sc = project.scenes.find(x => x.id === id), r = a.getBoundingClientRect(); newSetupMenu(sc, r.left, r.bottom + 4); }
 });
 $('#scenes').addEventListener('dblclick', e => { if (e.target.closest('.scene-head')) { const f = $('#inspector [data-k=name]'); if (f) { f.focus(); f.select(); } } });
 $('#scenes').addEventListener('contextmenu', e => {
+  const suEl = e.target.closest('.su[data-su]');
+  if (suEl) { e.preventDefault(); const sc = project.scenes.find(x => x.id === suEl.dataset.id); return setupMenu(sc, sc.setups.find(u => u.id === suEl.dataset.su), e.clientX, e.clientY); }
   const shotEl = e.target.closest('.shot'), headEl = e.target.closest('.scene-head');
   if (!shotEl && !headEl) return;
   e.preventDefault();
@@ -1732,9 +2065,12 @@ $('#scenes').addEventListener('contextmenu', e => {
   const sc = project.scenes.find(x => x.id === headEl.dataset.id);
   switchScene(sc.id); state.shotId = null; state.sceneSelected = true; refreshAll();
   showMenu(e.clientX, e.clientY, [
-    { header:`Scene ${sceneIndex(sc)+1}` },
+    { header:`Scene ${sceneNo(sc)}` },
     { input:sc.name, placeholder:'Scene heading', onInput:v => { sc.name = v; renderSidebar(); renderInspector(); save(); } },
+    { input:sc.num || '', placeholder:`Scene number — auto ${autoNo(sc)}`, onInput:v => { sc.num = v.trim().toUpperCase() || undefined; renderSidebar(); renderInspector(); renderCanvas(); save(); } },
     { label:'Add shot', icon:'plus', act:() => addShot() },
+    { label:'New setup…', icon:'route', act:() => newSetupMenu(sc, e.clientX, e.clientY) },
+    { label:`Insert scene after (${insertNumAfter(sc)})`, icon:'plus', act:() => addScene(sc) },
     { label:'Import script…', icon:'script', act:openImport },
     '-',
     { label:'Move up', icon:'up', disabled:sceneIndex(sc) === 0, act:() => moveItem(project.scenes, sc, -1) },
@@ -1745,7 +2081,8 @@ $('#scenes').addEventListener('contextmenu', e => {
 });
 function selectShot(id) {
   const [s, sc] = shotById(id); if (!s) return;
-  switchScene(sc.id); state.shotId = id; state.sel = null; state.sceneSelected = false; refreshAll();
+  switchScene(sc.id); switchSetup(sc, shotSetup(sc, s).id);   // a shot opens the setup its camera lives in
+  state.shotId = id; state.sel = null; state.sceneSelected = false; refreshAll();
 }
 // drag to reorder shots
 let dragShot = null;
@@ -1799,6 +2136,15 @@ function renderInspector() {
     else h += fld('Name', tin('name', t.name));
     const palette = t.type === 'prop' ? PROP_COLORS : COLORS;
     h += fld('Color', `<div class="swatches">${[t.color, ...palette].filter((c,i,a)=>a.indexOf(c)===i).map(c=>`<button class="sw ${c===t.color?'on':''}" style="background:${c}" data-act="color" data-c="${c}"></button>`).join('')}</div>`);
+    if (t.type === 'actor') {
+      const ch = charById(t.charId), sc0 = actorScale(t), def = defaultScale(t);
+      h += `<div class="sec"><div class="st">Character</div>
+        ${fld('Saved character', sin('charId', t.charId || '', [['', '— not saved —'], ...project.characters.map(c => [c.id, c.name]), ...(ch ? [] : [['__new', '+ Save as new character…']])]))}
+        ${ch ? `<div class="hint" style="margin-top:-4px">Name, colour and shape apply to ${esc(ch.name)} in every scene.</div>` : ''}
+        <div class="chips">${Object.entries(SHAPES).map(([k, s]) => `<button class="chip ${shapeOf(t) === k ? 'on' : ''}" data-act="shape" data-s="${k}">${s.label}</button>`).join('')}</div>
+        <div class="row">${fld('Size', nin('scalePct', sc0*100, '%', 'min="30" max="400" step="5"'))}<div class="f"><span>&nbsp;</span>${btn('reset-size', 'Reset', t.scale ? '' : '', t.scale ? '' : 'disabled')}</div></div>
+        <div class="hint" style="margin-top:-4px">Default ${Math.round(def*100)}%${ch ? ` for ${esc(ch.name)}` : ` for a ${SHAPES[shapeOf(t)].label.toLowerCase()}`}. Drag the corner square to resize — the dashed ring shows the default size.</div></div>`;
+    }
     if (t.type === 'arrow') {
       h += `<div class="sec"><div class="st">Style</div><div class="row3">${fld('Line', sin('style', t.style, [['solid','Solid'],['dashed','Dashed']]))}${fld('Heads', sin('head', t.head, [['end','End'],['both','Both'],['none','None']]))}${fld('Width', nin('width', t.width, '', 'min="1" max="12"'))}</div>
         <label class="check" style="margin-bottom:8px"><input type="checkbox" data-k="smooth" ${t.smooth?'checked':''}> Smooth curve through points</label>
@@ -1831,12 +2177,13 @@ function renderInspector() {
       h += `<div class="sec"><div class="st">Movement <span>${t.path.length ? `${t.path.length+1} marks` : ''}</span></div>`;
       if (t.path.length) h += `<div class="chips">${poses(t).map((_,i)=>`<button class="chip ${pt===i-1?'on':''}" data-act="sel-pt" data-pt="${i-1}">${i+1}</button>`).join('')}</div>`;
       h += `<div class="btns">${btn('add-move', ico('plus',14)+' Add move')}${pt >= 0 ? btn('del-pt', 'Remove mark '+(pt+2)) : ''}${t.path.length ? btn('clear-moves','Clear', 'danger') : ''}</div>
-        <div class="hint">Press <kbd>M</kbd> to add a mark, or <kbd>Alt</kbd>-drag on the canvas to drop one where you want it. Press <kbd>P</kbd> to play.</div></div>`;
+        <div class="hint">Press <kbd>M</kbd> to add a mark, or <kbd>Alt</kbd>-drag on the canvas to drop one where you want it. Press <kbd>P</kbd> to play.${t.path.length ? '<br>To walk around something without an extra mark, drag the <b>+</b> on a move line to bend it. Right-click a bend point to remove it.' : ''}</div></div>`;
     }
     h += `<div class="sec"><div class="btns">${btn('dup-obj', ico('copy',14)+' Duplicate')}${btn('del-obj', ico('trash',14)+' Delete', 'danger')}</div><div class="hint">Right-click anything on the canvas for quick actions.</div></div>`;
   } else if (kind === 'shot') {
-    const cam = sc.objects.find(o=>o.id===t.cameraId), cams = sc.objects.filter(o=>o.type==='camera');
+    const su = shotSetup(sc, t), cam = camOf(sc, t), cams = su.objects.filter(o=>o.type==='camera');
     h += `<div class="ih"><span class="kind">Shot</span><h2>${shotNum(sc,t)}</h2><label class="check"><input type="checkbox" data-k="done" ${t.done?'checked':''}> Done</label></div>`;
+    if (sc.setups.length > 1) h += `<div class="hint" style="margin-top:-8px">In ${esc(su.name)}</div>`;
     h += fld('Description', `<textarea data-k="desc" placeholder="What happens in this shot?">${esc(t.desc)}</textarea>`);
     h += `<div class="row">${fld('Shot size', sin('size', t.size, SIZES))}${fld('Angle', sin('angle', t.angle, ANGLES))}</div>`;
     h += `<div class="row">${fld('Movement', sin('move', t.move, MOVES))}${fld('Duration', nin('duration', t.duration, 's', 'min="0" step="1"'))}</div>`;
@@ -1846,18 +2193,23 @@ function renderInspector() {
     h += `<div class="sec"><div class="st">This shot</div><div class="btns">${btn('shot-up', ico('up',14), '', 'data-tip="Move shot earlier"')}${btn('shot-down', ico('down',14), '', 'data-tip="Move shot later"')}${btn('dup-shot', ico('copy',14)+' Duplicate', '', 'data-tip="Copy this shot"')}${btn('del-shot', ico('trash',14)+' Delete', 'danger', 'data-tip="Delete this shot"')}</div></div>`;
   } else {
     const total = t.shots.reduce((a,s)=>a+(+s.duration||0),0), done = t.shots.filter(s=>s.done).length;
-    h += `<div class="ih"><span class="kind">Scene ${sceneIndex(t)+1}</span><h2></h2></div>`;
-    h += fld('Scene heading', tin('name', t.name, 'INT. LOCATION – DAY'));
+    const u = setupOf(t), multi = t.setups.length > 1;
+    h += `<div class="ih"><span class="kind">Scene ${esc(sceneNo(t))}</span><h2></h2></div>`;
+    h += `<div class="row" style="grid-template-columns:72px 1fr">${fld('Number', tin('num', t.num || '', autoNo(t)))}${fld('Scene heading', tin('name', t.name, 'INT. LOCATION – DAY'))}</div>`;
     h += fld('Notes', `<textarea data-k="notes" placeholder="Synopsis, blocking ideas…">${esc(t.notes)}</textarea>`);
-    const loc = locById(t.locationId), dirty = loc && setSig(setObjects(t)) !== setSig(loc.objects);
-    h += `<div class="sec"><div class="st">Location</div>
-      ${fld('Set', sin('locationId', t.locationId || '', [['', loc ? '— unlink —' : '— own set —'], ...project.locations.map(l => [l.id, l.name])]))}
-      ${loc ? `<div class="hint">${dirty ? `<b style="color:var(--set)">Edited</b> — this set differs from ${esc(loc.name)}.` : `Matches ${esc(loc.name)}.`} Used in ${plural(project.scenes.filter(s => s.locationId === loc.id).length,'scene')}.</div>` : ''}
+    h += `<div class="sec"><div class="st">Setup <span>${multi ? `${t.setups.indexOf(u)+1} of ${t.setups.length}` : ''}</span></div>
+      ${multi ? fld('Name', tin('setupName', u.name)) : ''}
+      <div class="btns">${btn('new-setup', ico('plus',14)+' New setup')}${multi ? btn('del-setup', ico('trash',14), 'danger', 'data-tip="Delete this setup and its shots"') : ''}</div>
+      <div class="hint">A setup is a fresh canvas for the same scene — use one when the blocking gets crowded, or when part of the scene moves to another location. Shots keep their numbering across setups.</div></div>`;
+    const loc = locById(u.locationId), dirty = loc && setSig(setObjects(u)) !== setSig(loc.objects);
+    h += `<div class="sec"><div class="st">Location${multi ? ` · ${esc(u.name)}` : ''}</div>
+      ${fld('Set', sin('locationId', u.locationId || '', [['', loc ? '— unlink —' : '— own set —'], ...project.locations.map(l => [l.id, l.name])]))}
+      ${loc ? `<div class="hint">${dirty ? `<b style="color:var(--set)">Edited</b> — this set differs from ${esc(loc.name)}.` : `Matches ${esc(loc.name)}.`} Used in ${plural(scenesUsingCount(loc),'scene')}.</div>` : ''}
       <div class="btns">${dirty ? btn('loc-update', ico('check',14)+' Update location') : ''}${btn('loc-save', ico('pin',14)+' Save set as location')}</div></div>`;
     h += `<div class="sec"><div class="st">Overview</div>
       <div class="stat">Shots <b>${t.shots.length}</b></div><div class="stat">Done <b>${done} / ${t.shots.length}</b></div>
-      <div class="stat">Est. screen time <b>${fmtDur(total)}</b></div><div class="stat">Actors <b>${t.objects.filter(o=>o.type==='actor').length}</b></div>
-      <div class="stat">Cameras <b>${t.objects.filter(o=>o.type==='camera').length}</b></div></div>`;
+      <div class="stat">Est. screen time <b>${fmtDur(total)}</b></div><div class="stat">Actors <b>${u.objects.filter(o=>o.type==='actor').length}</b></div>
+      <div class="stat">Cameras <b>${u.objects.filter(o=>o.type==='camera').length}</b></div></div>`;
     h += `<div class="sec"><div class="btns">${btn('add-shot', ico('plus',14)+' Add shot', 'primary')}${btn('import', ico('script',14)+' Import script')}</div></div>`;
     h += `<div class="sec"><div class="st">This scene</div><div class="btns">${btn('scene-up', ico('up',14), '', 'data-tip="Move scene earlier"')}${btn('scene-down', ico('down',14), '', 'data-tip="Move scene later"')}${btn('dup-scene', ico('copy',14)+' Duplicate', '', 'data-tip="Copy scene with its set and shots"')}${project.scenes.length > 1 ? btn('del-scene', ico('trash',14)+' Delete', 'danger', 'data-tip="Delete scene and its shots"') : ''}</div></div>`;
     h += `<div class="sec"><div class="hint"><b style="color:var(--set)">Set</b> mode builds the room — walls, doors, furniture. <b style="color:var(--accent)">Blocking</b> mode locks the set so you can place actors, cameras and arrows without bumping it. Press <kbd>E</kbd> to switch.<br><br>Press <kbd>?</kbd> for shortcuts.</div></div>`;
@@ -1873,38 +2225,54 @@ function applyField(el) {
   let v = el.type === 'checkbox' ? el.checked : el.dataset.num !== undefined ? parseFloat(el.value) : el.value;
   if (el.dataset.num !== undefined && !isFinite(v)) return;
   const [kind, t] = inspectorTarget();
-  if (kind === 'scene' && k === 'locationId') {   // picking a location loads its set
-    pendingSnap = null;
-    if (v) loadLocation(t, locById(v)); else { pushUndo(); t.locationId = null; buildToolbar(); refreshAll(); save(); }
+  if (kind === 'scene' && k === 'locationId') {   // picking a location loads its set into the current setup
+    pendingSnap = null; const u = setupOf(t);
+    if (v) loadLocation(u, locById(v)); else { pushUndo(); u.locationId = null; buildToolbar(); refreshAll(); save(); }
     return;
+  }
+  if (kind === 'obj' && k === 'charId') {   // link an actor to a saved character (or save it as a new one)
+    pendingSnap = null;
+    if (v === '__new') { renderInspector(); return saveAsCharacter(t); }
+    pushUndo();
+    if (v) { const ch = charById(v); t.charId = ch.id; t.name = ch.name; t.color = ch.color; t.shape = ch.shape; delete t.scale; } else delete t.charId;
+    refreshAll(); save(); return;
   }
   if (pendingSnap) { pushUndo(pendingSnap); pendingSnap = null; }
   if (kind === 'obj') {
-    const p = ptPose(t, state.sel.pt);
+    const p = ptPose(t, state.sel.pt), ch = t.type === 'actor' && charById(t.charId);
     if (k === 'xm') p.x = v*M; else if (k === 'ym') p.y = v*M; else if (k === 'rot') p.rot = normDeg(v);
     else if (k === 'wm') t.w = Math.max(.05,v)*M; else if (k === 'hm') t.h = Math.max(.05,v)*M;
     else if (k === 'thickcm') t.thick = Math.max(1, v/2);
+    else if (k === 'scalePct') { const s = clamp(v/100, .3, 4); if (Math.abs(s - defaultScale(t)) < .001) delete t.scale; else t.scale = s; }
+    else if (k === 'name' && ch) { ch.name = v; syncCharacter(ch); }
     else t[k] = v;
     if (['name','text','label'].includes(k)) { const h2 = insp.querySelector('h2'); if (h2) h2.textContent = v; }
   } else if (kind === 'shot') {
-    if (k === 'lens') { const cam = obj(t.cameraId); if (cam) cam.lens = v; }
+    if (k === 'lens') { const cam = camOf(scene(), t); if (cam) cam.lens = v; }
     else t[k] = v;
-  } else t[k] = v;
+  } else if (k === 'num') { t.num = v.trim().toUpperCase() || undefined; const kd = insp.querySelector('.ih .kind'); if (kd) kd.textContent = `Scene ${sceneNo(t)}`; }
+  else if (k === 'setupName') setupOf(t).name = v;
+  else t[k] = v;
   renderCanvas(); renderSidebar(); renderBanner(); updatePlaybar(); save();
 }
 insp.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const [kind, t] = inspectorTarget(), sc = scene();
   const set = fn => { pushUndo(); fn(); refreshAll(); save(); };
+  const ch = kind === 'obj' && t.type === 'actor' && charById(t.charId);
   switch (b.dataset.act) {
-    case 'color': set(() => t.color = b.dataset.c); break;
+    case 'color': set(() => { if (ch) { ch.color = b.dataset.c; syncCharacter(ch); } else t.color = b.dataset.c; }); break;
+    case 'shape': set(() => { if (ch) { ch.shape = b.dataset.s; syncCharacter(ch); } else t.shape = b.dataset.s; delete t.scale; }); break;
+    case 'reset-size': set(() => delete t.scale); break;
+    case 'new-setup': { const r = b.getBoundingClientRect(); newSetupMenu(t, r.left, r.bottom + 4); break; }
+    case 'del-setup': deleteSetup(t, setupOf(t)); break;
     case 'lens': set(() => t.lens = +b.dataset.l); break;
     case 'add-move': addMove(); break;
     case 'sel-pt': state.sel.pt = +b.dataset.pt; renderInspector(); renderCanvas(); break;
     case 'del-pt': deleteSel(); break;
     case 'clear-moves': set(() => { t.path = []; state.sel.pt = -1; }); break;
-    case 'loc-save': saveAsLocation(t); break;
-    case 'loc-update': checkLocationEdits(t); break;
+    case 'loc-save': saveAsLocation(setupOf(t)); break;
+    case 'loc-update': checkLocationEdits(setupOf(t)); break;
     case 'flip-side': set(() => t.rot = normDeg(t.rot + 180)); break;
     case 'flip-hinge': set(() => t.mirror = !t.mirror); break;
     case 'dup-obj': duplicateSel(); break;
@@ -1930,29 +2298,77 @@ insp.addEventListener('click', e => {
 function renderBanner() {
   const s = curShot(), b = $('#banner');
   if (!s) { b.classList.remove('show'); return; }
-  const sc = scene(), cam = sc.objects.find(o=>o.id===s.cameraId);
+  const sc = scene(), cam = camOf(sc, s);
   b.innerHTML = `<div class="bn">${shotNum(sc,s)}</div><div class="bm"><span class="tag">${esc(s.size)}</span><span class="tag">${esc(s.angle)}</span><span class="tag">${esc(s.move)}</span>${cam?`<span class="tag" style="color:${cam.color}">${esc(cam.name)} · ${cam.lens}mm</span>`:''}${s.duration?`<span class="tag">${fmtDur(s.duration)}</span>`:''}</div>${s.desc?`<div class="bd">${esc(s.desc)}</div>`:''}`;
   b.classList.add('show');
 }
 
 // ---------- shot list ----------
+// a shot's setup drawn from above with its camera highlighted (other cameras dimmed)
+function shotDiagram(sc, s, w = 240, h = 150) {
+  const u = shotSetup(sc, s), cam = camOf(sc, s);
+  // frame the action (actors, cameras, arrows and the shot camera's view), not the whole set
+  const union = (a, c) => !a ? c : !c ? a : (() => { const x0 = Math.min(a.x, c.x), y0 = Math.min(a.y, c.y); return { x:x0, y:y0, w:Math.max(a.x+a.w, c.x+c.w)-x0, h:Math.max(a.y+a.h, c.y+c.h)-y0 }; })();
+  let b = bounds({ objects:u.objects.filter(o => layerOf(o) !== 'set' && o.kind !== 'text') }, false);
+  if (cam) b = union(b, bounds({ objects:[{ ...cam, range:Math.min(cam.range, 4) }] }, true));
+  if (!b) b = bounds(u, false);
+  if (!b) return `<svg class="sdg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${BG}"/></svg>`;
+  const pad = 24, vw = b.w + pad*2, vh = b.h + pad*2, r = w/h;
+  let X = b.x-pad, Y = b.y-pad, W = vw, H = vh;
+  if (W/H > r) { H = W/r; Y -= (H-vh)/2; } else { W = H*r; X -= (W-vw)/2; }
+  return `<svg class="sdg" xmlns="http://www.w3.org/2000/svg" viewBox="${rnd(X)} ${rnd(Y)} ${rnd(W)} ${rnd(H)}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"><rect x="${rnd(X)}" y="${rnd(Y)}" width="${rnd(W)}" height="${rnd(H)}" fill="${BG}"/>${renderLayers({ clean:true, sc:u, focus:s.cameraId })}</svg>`;
+}
 function renderShotlist() {
-  const total = project.scenes.reduce((a,sc)=>a+sc.shots.length,0);
+  const total = project.scenes.reduce((a,sc)=>a+sc.shots.length,0), dg = state.slDiagrams !== false;
   let rows = '';
-  project.scenes.forEach((sc, i) => {
+  project.scenes.forEach(sc => {
     const dur = sc.shots.reduce((a,s)=>a+(+s.duration||0),0);
-    rows += `<tr class="srow"><td colspan="9">${i+1} · ${esc(sc.name)}<span>${plural(sc.shots.length,'shot')} · ${fmtDur(dur)}</span></td></tr>`;
+    rows += `<tr class="srow"><td colspan="${dg ? 10 : 9}">${esc(sceneNo(sc))} · ${esc(sc.name)}<span>${plural(sc.shots.length,'shot')} · ${fmtDur(dur)}</span></td></tr>`;
     for (const s of sc.shots) {
-      const cam = sc.objects.find(o=>o.id===s.cameraId);
-      rows += `<tr class="shrow ${s.done?'isdone':''}" data-id="${s.id}"><td><b>${shotNum(sc,s)}</b></td><td>${esc(s.size)}</td><td>${esc(s.angle)}</td><td>${esc(s.move)}</td>
+      const cam = camOf(sc, s), su = shotSetup(sc, s);
+      rows += `<tr class="shrow ${s.done?'isdone':''}" data-id="${s.id}"><td><b>${shotNum(sc,s)}</b>${sc.setups.length > 1 ? `<br><small style="color:var(--dim)">${esc(su.name)}</small>` : ''}</td>${dg ? `<td class="dgc">${shotDiagram(sc, s)}</td>` : ''}<td>${esc(s.size)}</td><td>${esc(s.angle)}</td><td>${esc(s.move)}</td>
         <td>${cam?cam.lens+'mm':'—'}</td><td>${cam?esc(cam.name):'—'}</td><td class="desc">${esc(s.desc)}${s.notes?`<br><small style="color:var(--dim)">${esc(s.notes)}</small>`:''}</td>
         <td>${s.duration?fmtDur(s.duration):''}</td><td><input type="checkbox" class="dn" data-id="${s.id}" ${s.done?'checked':''} style="accent-color:var(--ok)"></td></tr>`;
     }
   });
   $('#shotlist').innerHTML = `<div class="sl-head"><h1>${esc(project.name)} — Shot list</h1><span style="color:var(--muted)">${plural(total,'shot')}</span>
-    <button class="btn" id="slCsv">${ico('csv',14)} Export CSV</button><button class="btn" id="slPrint">${ico('print',14)} Print / PDF</button></div>
-    <table><thead><tr><th>Shot</th><th>Size</th><th>Angle</th><th>Move</th><th>Lens</th><th>Camera</th><th>Description</th><th>Dur</th><th>Done</th></tr></thead><tbody>${rows}</tbody></table>`;
-  $('#slCsv').onclick = exportCSV; $('#slPrint').onclick = () => window.print();
+    <label class="check" style="margin-right:6px"><input type="checkbox" id="slDg" ${dg?'checked':''}> Diagrams</label>
+    <button class="btn" id="slCsv">${ico('csv',14)} Export CSV</button><button class="btn primary" id="slPdf">${ico('print',14)} Export PDF</button></div>
+    <table><thead><tr><th>Shot</th>${dg ? '<th>Diagram</th>' : ''}<th>Size</th><th>Angle</th><th>Move</th><th>Lens</th><th>Camera</th><th>Description</th><th>Dur</th><th>Done</th></tr></thead><tbody>${rows}</tbody></table>`;
+  $('#slCsv').onclick = exportCSV; $('#slPdf').onclick = () => exportShotPDF(dg);
+  $('#slDg').onchange = e => { state.slDiagrams = e.target.checked; renderShotlist(); };
+}
+// printable shot list (one table, a diagram per shot) → PDF in the desktop app, print dialog in a browser
+async function exportShotPDF(withDiagrams = true) {
+  const rows = project.scenes.map(sc => {
+    if (!sc.shots.length) return '';
+    return `<tr class="sr"><td colspan="${withDiagrams ? 5 : 4}">${esc(sceneNo(sc))} · ${esc(sc.name)}</td></tr>` + sc.shots.map(s => {
+      const cam = camOf(sc, s), su = shotSetup(sc, s);
+      return `<tr><td class="n">${shotNum(sc,s)}${sc.setups.length > 1 ? `<small>${esc(su.name)}</small>` : ''}</td>${withDiagrams ? `<td class="d">${shotDiagram(sc, s, 300, 188)}</td>` : ''}
+        <td class="m"><b>${esc(s.size)}</b><br>${esc(s.angle)}<br>${esc(s.move)}${cam ? `<br>${esc(cam.name)} · ${cam.lens}mm` : ''}${s.duration ? `<br>${fmtDur(s.duration)}` : ''}</td>
+        <td class="t">${esc(s.desc)}${s.notes ? `<div class="no">${esc(s.notes)}</div>` : ''}</td><td class="c">${s.done ? '✓' : ''}</td></tr>`;
+    }).join('');
+  }).join('');
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(project.name)} — Shot list</title><style>
+    @page{size:letter landscape;margin:12mm}
+    body{font:11px/1.4 Inter,"Segoe UI",system-ui,sans-serif;color:#111;margin:0}
+    h1{font-size:16px;margin:0 0 2px} .sub{color:#666;margin-bottom:10px}
+    table{width:100%;border-collapse:collapse} th{text-align:left;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#777;border-bottom:1.5px solid #222;padding:4px 6px}
+    td{border-bottom:1px solid #ddd;padding:6px;vertical-align:top} tr{page-break-inside:avoid}
+    tr.sr td{font-weight:700;font-size:12px;padding-top:14px;border-bottom:1.5px solid #222}
+    td.n{font-weight:800;font-size:14px;width:46px} td.n small{display:block;font-weight:500;font-size:9px;color:#777}
+    td.d{width:300px} td.d svg{display:block;border-radius:4px} td.m{width:120px;color:#333} td.c{width:18px;text-align:center}
+    .no{color:#666;margin-top:4px;font-size:10px}
+  </style></head><body><h1>${esc(project.name)} — Shot list</h1><div class="sub">${plural(project.scenes.reduce((a,sc)=>a+sc.shots.length,0),'shot')} · ${new Date().toLocaleDateString()}</div>
+  <table><thead><tr><th>Shot</th>${withDiagrams ? '<th>Diagram</th>' : ''}<th>Setup</th><th>Description / notes</th><th>✓</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+  if (host && host.savePDF) {
+    toast('Making PDF…');
+    const ok = await host.savePDF(html, `${safeName()} shot list.pdf`);
+    if (ok) toast('Shot list PDF saved'); else if (ok === false) toast("Couldn't make the PDF");
+    return;
+  }
+  const w = window.open('', '_blank'); if (!w) { toast('Allow pop-ups to print'); return; }
+  w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300);
 }
 $('#shotlist').addEventListener('click', e => {
   if (e.target.classList.contains('dn')) { const [s] = shotById(e.target.dataset.id); pushUndo(); s.done = e.target.checked; save(); renderShotlist(); renderSidebar(); return; }
@@ -1961,24 +2377,24 @@ $('#shotlist').addEventListener('click', e => {
 function exportCSV() {
   const q = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
   const lines = [['Scene','Shot','Size','Angle','Movement','Lens (mm)','Camera','Description','Notes','Duration (s)','Done'].map(q).join(',')];
-  project.scenes.forEach(sc => sc.shots.forEach(s => { const cam = sc.objects.find(o=>o.id===s.cameraId);
-    lines.push([sc.name, shotNum(sc,s), s.size, s.angle, s.move, cam?cam.lens:'', cam?cam.name:'', s.desc, s.notes, s.duration||'', s.done?'yes':''].map(q).join(',')); }));
+  project.scenes.forEach(sc => sc.shots.forEach(s => { const cam = camOf(sc, s);
+    lines.push([`${sceneNo(sc)} ${sc.name}`, shotNum(sc,s), s.size, s.angle, s.move, cam?cam.lens:'', cam?cam.name:'', s.desc, s.notes, s.duration||'', s.done?'yes':''].map(q).join(',')); }));
   download(`${safeName()} shot list.csv`, new Blob([lines.join('\r\n')], {type:'text/csv'})); toast('Shot list exported');
 }
 
 // ---------- PNG export ----------
 async function exportPNG() {
-  const sc = scene(), b = bounds(sc, state.showCones);
+  const scn = scene(), sc = cv(), b = bounds(sc, state.showCones);
   if (!b) { toast('Nothing to export yet'); return; }
   const pad = 50, top = 40, w = b.w+pad*2, h = b.h+pad*2+top, x = b.x-pad, y = b.y-pad-top, S = 2;
   const str = `<svg xmlns="http://www.w3.org/2000/svg" width="${w*S}" height="${h*S}" viewBox="${x} ${y} ${w} ${h}"><defs>${gridDefs(1)}</defs>
     <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${BG}"/><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#grid)"/>
-    <text x="${x+20}" y="${y+30}" font-family="Inter,Segoe UI,sans-serif" font-size="15" font-weight="700" fill="#e7e9ee">${sceneIndex(sc)+1} · ${esc(sc.name)}</text>
+    <text x="${x+20}" y="${y+30}" font-family="Inter,Segoe UI,sans-serif" font-size="15" font-weight="700" fill="#e7e9ee">${esc(sceneNo(scn))} · ${esc(scn.name)}${scn.setups.length > 1 ? ` · ${esc(sc.name)}` : ''}</text>
     ${renderLayers({ clean:true })}</svg>`;
   const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(str);
   try { await img.decode(); } catch (e) { toast('Export failed'); return; }
   const c = document.createElement('canvas'); c.width = w*S; c.height = h*S; c.getContext('2d').drawImage(img, 0, 0);
-  c.toBlob(bl => { download(`${safeName()} - scene ${sceneIndex(sc)+1}.png`, bl); toast('Diagram exported'); });
+  c.toBlob(bl => { download(`${safeName()} - scene ${sceneNo(scn)}${scn.setups.length > 1 ? ` ${sc.name}` : ''}.png`, bl); toast('Diagram exported'); });
 }
 
 // ---------- script import ----------
@@ -2027,7 +2443,7 @@ function parseFDX(xml) {
 let imp = null;
 function openImport() {
   hideMenu();
-  const emptyish = project.scenes.every(s => !s.objects.length && !s.shots.length);
+  const emptyish = project.scenes.every(s => !allObjects(s).length && !s.shots.length);
   imp = { scenes:[], replace:emptyish, actors:true };
   $('#modalCard').innerHTML = `<div class="ih"><h2>Import script</h2><button class="ib" data-close>${ico('x')}</button></div>
     <div class="dz" id="dz">Drop a screenplay here or <button class="btn sm" id="impPick">Choose file…</button>
@@ -2071,14 +2487,22 @@ function showImport(scenes, fname) {
 function applyImport() {
   const chosen = imp.scenes.filter(s => s.on); if (!chosen.length) return;
   pushUndo();
-  const colorOf = {}; let ci = 0;
+  // every speaking part becomes a saved character (reusing ones that already exist by name)
+  const charFor = n => {
+    let ch = project.characters.find(c => c.name === n);
+    if (!ch) { ch = newCharacter(); ch.name = n; project.characters.push(ch); }
+    return ch;
+  };
   const made = chosen.map(s => {
-    const sc = { id:uid(), name:s.heading, notes:s.summary, objects:[], shots:[], open:false };
+    const sc = makeScene(s.heading); sc.notes = s.summary; sc.open = false;
+    const u = sc.setups[0];
     const loc = project.locations.find(l => l.name === locationName(s.heading));   // reuse a saved set with the same name
-    if (loc) applyLocation(sc, loc);
-    if (imp.actors) s.chars.forEach((n, i) => {
-      if (!colorOf[n]) colorOf[n] = COLORS[ci++ % COLORS.length];
-      sc.objects.push({ id:uid(), type:'actor', layer:'block', name:n, color:colorOf[n], x:Math.round((i-(s.chars.length-1)/2)*75), y:0, rot:180, path:[] });
+    if (loc) applyLocation(u, loc);
+    s.chars.forEach((n, i) => {
+      const ch = charFor(n);
+      if (!imp.actors) return;
+      const o = makeObject('actor', ch.id, Math.round((i-(s.chars.length-1)/2)*75), 0, u);
+      u.objects.push(o);
     });
     return sc;
   });
@@ -2086,7 +2510,7 @@ function applyImport() {
   made[0].open = true;
   state.sceneId = null; state.shotId = null; state.sel = null;
   switchScene(made[0].id); state.sceneSelected = true;
-  applyMode(hasSet(made[0]) ? 'block' : 'set'); fitView();
+  applyMode(hasSet(made[0].setups[0]) ? 'block' : 'set'); fitView();
   $('#modal').classList.remove('show');
   refreshAll(); save(); toast(`Imported ${plural(made.length,'scene')}`);
 }
@@ -2096,7 +2520,8 @@ function showHelp() {
   const k = [['Set mode ↔ Blocking mode','E'],['Select / Pan tool','V / H'],['Draw walls / Draw room','W / R'],['Door','D'],['Actor / Camera / Arrow','A / C / X'],['Light / Text','L / T'],
     ['Finish walls / arrow path','Enter · double-click · right-click'],['Select several','Drag a box on empty canvas · Shift+click'],['Select all','Ctrl/⌘ + A'],
     ['Pan','Space-drag, middle-drag, or hand tool (H)'],['Zoom','Scroll wheel · pinch · Ctrl+scroll'],['Fit set to view','F'],
-    ['Quick actions','Right-click'],['Add move mark to selection','M'],['Drop a mark by dragging','Alt + drag'],['Play / pause moves','P'],['Rotate selection','[  ]  (Shift = 45°)'],['Nudge','Arrows (Shift = ×4)'],
+    ['Quick actions','Right-click'],['Add move mark to selection','M'],['Drop a mark by dragging','Alt + drag'],['Bend a move (walk around something)','Drag the + on the move line'],
+    ['Resize an actor','Drag its corner square'],['Place a saved character','Drag it from the sidebar'],['New setup for this scene','+ under the scene in the sidebar'],['Play / pause moves','P'],['Rotate selection','[  ]  (Shift = 45°)'],['Nudge','Arrows (Shift = ×4)'],
     ['Lock to 45° (rotate, walls, arrows, moves)','Hold Shift'],['Resize proportionally','Shift + drag corner'],['Ignore the grid','Hold Ctrl/⌘'],
     ['Keep tool after placing','Shift + click'],['Duplicate','Ctrl/⌘ + D'],['Delete','Delete'],['Undo / Redo','Ctrl/⌘ + Z / Shift+Z'],['Save now','Ctrl/⌘ + S'],['Deselect / stop tool','Esc']];
   $('#modalCard').innerHTML = `<div class="ih"><h2>Keyboard shortcuts</h2><button class="ib" data-close>${ico('x')}</button></div><div class="kb">${k.map(([a,b])=>`<div>${a}</div><div><kbd>${b}</kbd></div>`).join('')}</div>`;

@@ -1,0 +1,2174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blockwise</title>
+<style>
+:root{
+  --bg:#0e1014; --panel:#15181e; --panel2:#1b1f27; --hover:#222733; --line:#252a34; --line2:#313745;
+  --text:#e7e9ee; --muted:#8c94a6; --dim:#5d6577; --accent:#6ea8ff; --accent-bg:rgba(110,168,255,.14);
+  --set:#ffb86b; --set-bg:rgba(255,184,107,.15);
+  --danger:#ff6b6b; --ok:#4cd6a0; --canvas:#12151b; --r:8px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.4 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.ic{flex:none;display:block}
+
+#app{display:grid;grid-template-columns:260px 1fr 290px;grid-template-rows:48px 1fr;height:100vh}
+#app.list #stage,#app.list #inspector{display:none}
+#app:not(.list) #shotlist{display:none}
+#app.home #sidebar,#app.home #stage,#app.home #inspector,#app.home #shotlist,#app.home .proj-only{display:none!important}
+#app:not(.home) #home{display:none}
+
+/* header */
+header{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:0 10px 0 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.02em;cursor:pointer;user-select:none}
+.mark{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#6ea8ff,#b48cff);display:grid;place-items:center}
+.crumbs{display:flex;align-items:center;gap:2px;margin-left:6px}
+.crumb{border:0;background:transparent;color:var(--muted);padding:5px 8px;border-radius:6px;display:flex;gap:6px;align-items:center}
+.crumb:hover{background:var(--hover);color:var(--text)}
+.slash{color:var(--dim)}
+#projName{background:transparent;border:1px solid transparent;border-radius:6px;padding:5px 8px;width:220px;color:var(--text);font-weight:600}
+#projName:hover{border-color:var(--line2)} #projName:focus{outline:none;border-color:var(--accent)}
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:2px;margin:0 auto}
+.seg button{border:0;background:transparent;padding:5px 12px;border-radius:6px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.seg button.on{background:var(--panel2);color:var(--text)}
+.hbtns{display:flex;gap:2px;align-items:center}
+.ib{border:0;background:transparent;width:32px;height:32px;border-radius:7px;display:grid;place-items:center;color:var(--muted);position:relative}
+.ib:hover{background:var(--hover);color:var(--text)}
+.ib:disabled{opacity:.35;pointer-events:none}
+.sep{width:1px;height:20px;background:var(--line2);margin:0 6px;flex:none}
+
+/* home */
+#home{grid-column:1/-1;overflow:auto;padding:36px 48px 60px}
+.home-head{display:flex;align-items:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.home-head h1{margin:0;font-size:24px;flex:1}
+.home-foot{display:flex;align-items:center;gap:10px;margin-top:28px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--dim);flex-wrap:wrap}
+.home-foot .linkish{background:none;border:0;color:var(--text);font:inherit;cursor:pointer;padding:2px 4px;border-radius:4px;max-width:60ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-foot .linkish:hover{background:var(--hover, rgba(255,255,255,.06));text-decoration:underline}
+.home-foot .ver{margin-left:auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:18px}
+.pcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer;transition:border-color .15s,transform .15s;position:relative}
+.pcard:hover{border-color:var(--line2);transform:translateY(-2px)}
+.thumb{aspect-ratio:16/10;background:var(--canvas);display:grid;place-items:center;border-bottom:1px solid var(--line)}
+.thumb svg{width:100%;height:100%;display:block}
+.pcard .meta{padding:12px 14px}
+.pcard .meta b{display:block;font-size:14px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcard .meta span{font-size:12px;color:var(--muted)}
+.pcard .more{position:absolute;top:8px;right:8px;background:rgba(14,16,20,.75)}
+.newcard{border:1.5px dashed var(--line2);border-radius:12px;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;color:var(--muted);min-height:220px;background:transparent}
+.newcard:hover{border-color:var(--accent);color:var(--accent)}
+
+/* sidebar */
+#sidebar{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.sh-title{display:flex;align-items:center;gap:2px;padding:10px 8px 6px 14px;font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+.sh-title span{flex:1}
+.sh-title .ib{width:26px;height:26px}
+#scenes{overflow:auto;padding:0 6px 16px;flex:1}
+.scene-head{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:7px;cursor:pointer;user-select:none}
+.scene-head:hover{background:var(--hover)}
+.scene.active>.scene-head{background:var(--panel2)}
+.scene.active.selected>.scene-head{background:var(--accent-bg)}
+.caret{width:16px;height:16px;display:grid;place-items:center;color:var(--dim);transition:transform .15s}
+.scene.open .caret{transform:rotate(90deg)}
+.snum{font-weight:700;color:var(--accent);min-width:14px}
+.sname{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.count{font-size:11px;color:var(--dim);background:var(--bg);padding:0 6px;border-radius:10px}
+.shots{padding:2px 0 6px 22px}
+.shot{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;color:var(--muted);border:1px solid transparent}
+.shot:hover{background:var(--hover);color:var(--text)}
+.shot.sel{background:var(--accent-bg);color:var(--text);border-color:rgba(110,168,255,.3)}
+.shot.drop,.addshot.drop{border-top-color:var(--accent)}
+.shot .sn{font-weight:700;color:var(--text);min-width:24px}
+.tag{font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;background:var(--bg);color:var(--muted);letter-spacing:.03em}
+.shot .sd{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.shot .done{color:var(--ok)}
+.addshot{display:flex;align-items:center;gap:6px;border:0;border-top:1px solid transparent;background:transparent;color:var(--dim);padding:5px 8px;border-radius:6px;width:100%;text-align:left;font-size:12px}
+.addshot:hover{color:var(--accent);background:var(--hover)}
+.lpin{color:var(--set);display:grid;place-items:center}
+#locs{max-height:32%;overflow:auto;padding:0 6px 12px}
+.loc-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;color:var(--muted)}
+.loc-row:hover{background:var(--hover);color:var(--text)}
+.loc-row .ic{color:var(--set)}
+.loc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.loc-card{border:1px solid var(--line2);background:var(--panel2);border-radius:10px;padding:0;overflow:hidden;text-align:left;color:var(--text)}
+.loc-card:hover{border-color:var(--accent)}
+.loc-card .meta{padding:8px 10px}
+.loc-card .meta b{display:block;font-size:13px}
+.loc-card .meta span{font-size:11.5px;color:var(--muted)}
+.btn{position:relative}
+
+/* stage */
+#stage{position:relative;container-type:inline-size;min-width:0;min-height:0;background:var(--canvas);overflow:hidden}
+#stage.setmode::after{content:'';position:absolute;inset:0;border:2px solid rgba(255,184,107,.35);pointer-events:none}
+#canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#canvas [data-id]{cursor:move}
+#canvas [data-handle=rot]{cursor:grab}
+#canvas [data-handle=resize]{cursor:nwse-resize}
+#canvas [data-handle=v],#canvas [data-handle=ap]{cursor:pointer}
+#canvas [data-handle=vm],#canvas [data-handle=am]{cursor:copy}
+#canvas.placing,#canvas.placing [data-id],#canvas.placing [data-lock]{cursor:crosshair}
+#canvas.panning,#canvas.panning [data-id]{cursor:grab}
+.float{position:absolute;background:rgba(21,24,30,.92);backdrop-filter:blur(8px);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#toolbar{top:12px;left:12px;right:12px;width:max-content;max-width:calc(100% - 24px);margin:0 auto;display:flex;align-items:center;gap:2px;padding:4px;overflow-x:auto}
+.mode{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:2px;margin-right:4px;flex:none}
+.mode button{border:0;background:transparent;color:var(--muted);padding:0 10px;height:28px;border-radius:6px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;position:relative}
+.mode button.on[data-mode=set]{background:var(--set-bg);color:var(--set)}
+.mode button.on[data-mode=block]{background:var(--accent-bg);color:var(--accent)}
+.tool{border:0;background:transparent;height:34px;min-width:34px;padding:0 6px;border-radius:7px;display:flex;align-items:center;justify-content:center;gap:6px;color:var(--muted);position:relative;flex:none}
+.tool:hover{background:var(--hover);color:var(--text)}
+.tool.on{background:var(--accent-bg);color:var(--accent)}
+.tool svg.pi{width:22px;height:22px}
+.tool .lbl{font-size:12px}
+#toolbar{scrollbar-width:none}
+@container (max-width:1020px){.tool .lbl{display:none}.tool{min-width:32px;padding:0 4px}}
+.tool.toggle.on{background:transparent;color:var(--accent)}
+[data-tip]:hover::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);white-space:nowrap;background:#000;color:#fff;font-size:11px;padding:4px 7px;border-radius:5px;pointer-events:none;z-index:10;font-weight:500}
+#playbar{bottom:14px;left:14px;display:flex;align-items:center;gap:8px;padding:6px 10px 6px 6px;width:min(460px,calc(100% - 250px))}
+#playbar input[type=range]{flex:1;accent-color:var(--accent)}
+#playbar .pl{font-size:11px;color:var(--muted);min-width:70px;text-align:right;font-variant-numeric:tabular-nums}
+#playbar.off{opacity:.55}
+#zoomui{bottom:14px;right:14px;display:flex;align-items:center;gap:2px;padding:3px;font-size:11px;color:var(--muted)}
+#zoomui span{min-width:44px;text-align:center;font-variant-numeric:tabular-nums}
+#banner{top:62px;left:14px;padding:10px 14px;max-width:360px;display:none}
+#banner.show{display:block}
+#banner .bn{font-size:18px;font-weight:700}
+#banner .bm{display:flex;gap:6px;margin:4px 0;flex-wrap:wrap}
+#banner .bd{color:var(--muted);font-size:12px}
+#hint{bottom:66px;left:50%;transform:translateX(-50%);padding:6px 12px;font-size:12px;color:var(--muted);display:none;white-space:nowrap;pointer-events:none}
+#hint.show{display:block}
+#hint b{color:var(--set)}
+#empty{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;color:var(--dim);pointer-events:none;display:none;line-height:1.6}
+#empty.show{display:block}
+#empty b{color:var(--muted);display:block;font-size:15px;margin-bottom:4px}
+
+/* inspector */
+#inspector{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:14px 14px 40px}
+.ih{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.ih .kind{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);background:var(--accent-bg);padding:3px 7px;border-radius:5px}
+.ih .kind.set{color:var(--set);background:var(--set-bg)}
+.ih h2{margin:0;font-size:16px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sec{border-top:1px solid var(--line);padding:12px 0 4px;margin-top:6px}
+.st{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.f{display:block;margin-bottom:10px}
+.f>span{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+input[type=text],input[type=number],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line2);border-radius:7px;padding:7px 9px;outline:none}
+textarea{resize:vertical;min-height:60px}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+.unit{position:relative}.unit input{padding-right:28px}.unit i{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-style:normal;font-size:11px;color:var(--dim);pointer-events:none}
+.swatches{display:flex;gap:6px;flex-wrap:wrap}
+.sw{width:22px;height:22px;border-radius:50%;border:2px solid transparent;padding:0}
+.sw.on{border-color:var(--text)}
+.btn{border:1px solid var(--line2);background:var(--panel2);border-radius:7px;padding:7px 10px;display:inline-flex;align-items:center;gap:6px;color:var(--text)}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#081020;font-weight:600}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--danger)}
+.btn.sm{padding:4px 8px;font-size:12px}
+.btns{display:flex;gap:6px;flex-wrap:wrap}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chip{border:1px solid var(--line2);background:var(--bg);border-radius:14px;min-width:28px;height:26px;padding:0 9px;font-size:12px;font-weight:600;color:var(--muted)}
+.chip:hover{color:var(--text)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#081020}
+.hint{font-size:11.5px;color:var(--dim);line-height:1.5;margin:6px 0 10px}
+.hint kbd,.kb kbd,#hint kbd,#empty kbd{background:var(--bg);border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:0 4px;font:11px ui-monospace,monospace;color:var(--muted)}
+.check{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.check input{accent-color:var(--ok);width:16px;height:16px}
+.stat{display:flex;justify-content:space-between;color:var(--muted);padding:3px 0}
+.stat b{color:var(--text);font-weight:600}
+
+/* shot list */
+#shotlist{grid-column:2/-1;overflow:auto;padding:24px 32px 60px;background:var(--bg)}
+.sl-head{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.sl-head h1{font-size:20px;margin:0;flex:1}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);text-align:left;font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line2);position:sticky;top:-24px;background:var(--bg)}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr.srow td{padding-top:22px;font-weight:700;color:var(--accent);border-bottom-color:var(--line2)}
+tr.srow td span{color:var(--dim);font-weight:500;margin-left:8px}
+tr.shrow{cursor:pointer}
+tr.shrow:hover td{background:var(--panel)}
+tr.shrow.isdone td{color:var(--dim)}
+td.desc{max-width:420px;color:var(--muted)}
+
+/* context menu */
+#menu{position:fixed;z-index:70;min-width:220px;max-width:290px;background:#1b1f27;border:1px solid var(--line2);border-radius:10px;padding:5px;box-shadow:0 14px 36px rgba(0,0,0,.55);display:none}
+#menu.show{display:block}
+.mi{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;padding:6px 9px;border-radius:6px;text-align:left;color:var(--text);font-size:12.5px}
+.mi:hover{background:var(--hover)}
+.mi .ic{color:var(--muted)}
+.mi .k{margin-left:auto;color:var(--dim);font-size:11px;padding-left:12px}
+.mi.danger,.mi.danger .ic{color:var(--danger)}
+.mi:disabled{opacity:.4;pointer-events:none}
+.msep{height:1px;background:var(--line2);margin:5px 4px}
+.mhead{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:6px 9px 3px}
+.mrow{padding:4px 7px;display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.mrow input{padding:6px 8px}
+.mrow .sw{width:20px;height:20px}
+.mrow .chip{height:24px;min-width:0;padding:0 8px;font-size:11.5px}
+.mlbl{font-size:11px;color:var(--muted);width:100%;margin-bottom:-1px}
+
+/* modal + toast */
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;place-items:center;z-index:50}
+#modal.show{display:grid}
+#modal .card{background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:20px 22px;width:min(620px,92vw);max-height:88vh;overflow:auto}
+.kb{display:grid;grid-template-columns:1fr auto;gap:6px 20px;font-size:12.5px;color:var(--muted)}
+.kb div:nth-child(even){text-align:right}
+.dz{border:1.5px dashed var(--line2);border-radius:10px;padding:16px;text-align:center;color:var(--muted);margin-bottom:10px}
+.dz.over{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
+.imp-list{max-height:260px;overflow:auto;border:1px solid var(--line2);border-radius:8px;margin:8px 0 12px}
+.imp-row{display:flex;gap:10px;align-items:flex-start;padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer}
+.imp-row:last-child{border:0}
+.imp-row input{accent-color:var(--accent);margin-top:2px}
+.imp-row .h{font-weight:600}
+.imp-row .c{font-size:11.5px;color:var(--muted)}
+#toast{position:fixed;bottom:20px;left:50%;transform:translate(-50%,20px);background:#000;color:#fff;padding:8px 14px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;z-index:80}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media print{
+  body{overflow:visible;background:#fff;color:#000}
+  #app{display:block;height:auto}
+  header,#sidebar,#stage,#inspector,#home,.sl-head .btn{display:none!important}
+  #shotlist{display:block!important;background:#fff;padding:0;overflow:visible}
+  th{position:static;background:#fff;color:#555} td{border-color:#ddd;color:#000!important} tr.srow td{color:#000}
+}
+</style>
+</head>
+<body>
+<div id="app" class="home">
+  <header>
+    <div class="brand" id="brand" title="All projects"><div class="mark"><svg width="12" height="12" viewBox="0 0 24 24" fill="#0b1020"><path d="M12 22 3 5a11 11 0 0 1 18 0z"/></svg></div>Blockwise</div>
+    <div class="crumbs proj-only"><span class="slash">/</span><button class="crumb" id="bHome"></button><span class="slash">/</span><input id="projName" spellcheck="false" title="Project name"></div>
+    <div class="seg proj-only">
+      <button data-view="diagram" class="on"></button>
+      <button data-view="list"></button>
+    </div>
+    <div class="hbtns proj-only" id="hbtns"></div>
+  </header>
+
+  <section id="home"></section>
+
+  <aside id="sidebar">
+    <div class="sh-title"><span>Scenes</span><button class="ib" id="impScript" data-tip="Import script"></button><button class="ib" id="addScene" data-tip="New scene"></button></div>
+    <div id="scenes"></div>
+    <div class="sh-title" style="border-top:1px solid var(--line)"><span>Locations</span></div>
+    <div id="locs"></div>
+  </aside>
+
+  <main id="stage">
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="toolbar" class="float"></div>
+    <div id="banner" class="float"></div>
+    <div id="hint" class="float"></div>
+    <div id="empty"><b>Empty set</b>Press <kbd>R</kbd> and drag to draw a room, or <kbd>W</kbd> to draw walls corner by corner.<br>Then add doors and furniture, and switch to Blocking for actors and cameras.</div>
+    <div id="zoomui" class="float"></div>
+    <div id="playbar" class="float"></div>
+  </main>
+
+  <aside id="inspector"></aside>
+  <section id="shotlist"></section>
+</div>
+<div id="menu"></div>
+<div id="modal"><div class="card" id="modalCard"></div></div>
+<div id="toast"></div>
+<input type="file" id="fileIn" accept=".json,application/json" hidden>
+<input type="file" id="scriptIn" accept=".fountain,.fdx,.txt,.spmd,.md,.pdf,text/plain" hidden>
+
+<script>
+'use strict';
+// ---------- constants ----------
+const M = 50;            // world px per metre
+const GRID = 25;         // snap = 0.5 m
+const BG = '#12151b';
+const COLORS = ['#ff7a8a','#ffb86b','#ffd86b','#7ee08a','#5fd4c8','#6ea8ff','#b48cff','#ff8ad8','#d8dce6'];
+const PROP_COLORS = ['#8a93a3','#5d6577','#6b5a4a','#8a7560','#c9a27a','#56688c','#4d5a70','#3f7a52','#6a5a7a','#c3c8d4'];
+const CAM_COLORS = ['#6ea8ff','#ffb86b','#7ee08a','#ff8ad8','#b48cff','#5fd4c8'];
+const SIZES = ['EWS','WS','FS','MWS','MS','MCU','CU','ECU','OTS','2-Shot','POV','Insert'];
+const ANGLES = ['Eye level','High','Low','Overhead','Ground','Dutch'];
+const MOVES = ['Static','Pan','Tilt','Dolly in','Dolly out','Truck','Tracking','Crane','Handheld','Steadicam','Zoom','Push in','Pull out'];
+const LENSES = [18,24,35,50,85,135];
+const PROPS = {
+  walls:{label:'Walls',w:0,h:0,color:'#8a93a3'},
+  wall:{label:'Wall',w:200,h:10,color:'#8a93a3'},     // legacy single wall
+  door:{label:'Door',w:50,h:10,color:'#c9a27a',key:'d'},
+  window:{label:'Window',w:70,h:10,color:'#7fb7d9'},
+  table:{label:'Table',w:100,h:60,color:'#6b5a4a'},
+  roundtable:{label:'Round table',w:70,h:70,color:'#6b5a4a'},
+  chair:{label:'Chair',w:26,h:26,color:'#8a7560'},
+  sofa:{label:'Sofa',w:120,h:46,color:'#56688c'},
+  bed:{label:'Bed',w:90,h:110,color:'#6a5a7a'},
+  car:{label:'Car',w:90,h:220,color:'#4d5a70'},
+  tree:{label:'Tree',w:70,h:70,color:'#3f7a52'},
+  light:{label:'Light',w:24,h:24,color:'#ffd86b',key:'l'},
+  text:{label:'Text',w:120,h:24,color:'#c3c8d4',key:'t'},
+};
+const SET_TOOLS = ['walls','room','|','prop:door','prop:window','|','prop:table','prop:roundtable','prop:chair','prop:sofa','prop:bed','prop:car','prop:tree','|','prop:text'];
+const BLOCK_TOOLS = ['actor','camera','|','arrow','prop:light','prop:text'];
+const IC = {
+  undo:'M9 14 4 9l5-5|M4 9h10.5a5.5 5.5 0 0 1 0 11H11',
+  redo:'m15 14 5-5-5-5|M20 9H9.5a5.5 5.5 0 0 0 0 11H13',
+  open:'M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2',
+  download:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4|M7 10l5 5 5-5|M12 15V3',
+  image:'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z|M21 15l-5-5L5 21|M9 7a2 2 0 1 0 0 4a2 2 0 1 0 0-4',
+  help:'M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20|M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3|M12 17h.01',
+  cursor:'M5 3l6.5 17 2.4-7.1L21 10.5z',
+  hand:'M18 11V6a2 2 0 0 0-4 0v5|M14 10V4a2 2 0 0 0-4 0v6|M10 10.5V6a2 2 0 0 0-4 0v8|M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.3l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15',
+  plus:'M12 5v14|M5 12h14', minus:'M5 12h14', x:'M18 6 6 18|M6 6l12 12', check:'M20 6 9 17l-5-5',
+  magnet:'M5 3h4v8a3 3 0 0 0 6 0V3h4v8a7 7 0 0 1-14 0z|M5 7h4|M15 7h4',
+  cone:'M12 21 4 7a11 11 0 0 1 16 0z',
+  route:'M6 17a2 2 0 1 0 0 4a2 2 0 1 0 0-4|M18 3a2 2 0 1 0 0 4a2 2 0 1 0 0-4|M8 19h6a3 3 0 0 0 0-6H10a3 3 0 0 1 0-6h6',
+  fit:'M8 3H5a2 2 0 0 0-2 2v3|M21 8V5a2 2 0 0 0-2-2h-3|M3 16v3a2 2 0 0 0 2 2h3|M16 21h3a2 2 0 0 0 2-2v-3',
+  trash:'M3 6h18|M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6|M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',
+  copy:'M9 9h11v11H9z|M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1',
+  list:'M8 6h13|M8 12h13|M8 18h13|M3 6h.01|M3 12h.01|M3 18h.01',
+  grid:'M3 3h18v18H3z|M3 9h18|M9 21V9',
+  projects:'M3 3h7v7H3z|M14 3h7v7h-7z|M14 14h7v7h-7z|M3 14h7v7H3z',
+  up:'m18 15-6-6-6 6', down:'m6 9 6 6 6-6', chev:'m9 18 6-6-6-6',
+  print:'M6 9V2h12v7|M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2|M6 14h12v8H6z',
+  csv:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z|M14 2v6h6|M8 13h8|M8 17h8',
+  script:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z|M14 2v6h6|M9 13h6|M9 17h4|M11 9h-2',
+  brick:'M3 5h18v14H3z|M3 12h18|M9 5v7|M15 12v7',
+  users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2|M9 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8|M22 21v-2a4 4 0 0 0-3-3.87|M16 3.13a4 4 0 0 1 0 7.75',
+  lock:'M5 11h14v10H5z|M8 11V7a4 4 0 0 1 8 0v4',
+  walls:'M3 21V4h11v8h7v9',
+  room:'M4 4h16v16H4z|M4 4l3 3|M20 4l-3 3|M4 20l3-3|M20 20l-3-3',
+  arrow:'M5 19 19 5|M9 5h10v10',
+  camera:'M23 7l-7 5 7 5z|M1 5h15v14H1z',
+  play:'M7 4l13 8-13 8z',
+  rotl:'M3 12a9 9 0 1 0 3-6.7L3 8|M3 3v5h5', rotr:'M21 12a9 9 0 1 1-3-6.7L21 8|M21 3v5h-5',
+  flip:'M12 3v18|M16 7l4 5-4 5|M8 7l-4 5 4 5',
+  more:'M12 12h.01|M19 12h.01|M5 12h.01',
+  text:'M4 7V4h16v3|M9 20h6|M12 4v16',
+  pin:'M12 22s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12z|M12 7a3 3 0 1 0 0 6a3 3 0 1 0 0-6',
+};
+const ico = (n,s=16,sw=2) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${IC[n].split('|').map(d=>`<path d="${d}"/>`).join('')}</svg>`;
+const playIco = (s=14) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg>`;
+const pauseIco = (s=14) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>`;
+
+// ---------- helpers ----------
+const $ = s => document.querySelector(s);
+const uid = () => Math.random().toString(36).slice(2,10);
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const rnd = v => Math.round(v*100)/100;
+const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const normDeg = a => ((a % 360) + 540) % 360 - 180;
+const letters = n => n < 26 ? String.fromCharCode(65+n) : letters(Math.floor(n/26)-1) + letters(n%26);
+const fovOf = lens => 2*Math.atan(36/(2*Math.max(1,lens)))*180/Math.PI;
+const fmtDur = s => { s = Math.round(s||0); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; };
+const deep = o => JSON.parse(JSON.stringify(o));
+const plural = (n, w) => `${n} ${w}${n===1?'':'s'}`;
+function fmtAgo(ts) {
+  const s = (Date.now() - (ts||0)) / 1000;
+  if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`; if (s < 604800) return `${Math.floor(s/86400)}d ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
+// ---------- state ----------
+let project = null, undoStack = [], redoStack = [], pendingSnap = null;
+const state = { sceneId:null, sel:null, multi:[], shotId:null, tool:'select', mode:'block', snap:true, showCones:true, showPaths:true,
+  playT:null, playing:false, view:'home', sceneSelected:false, draw:null, cursor:null };
+const views = {};
+let view = { x:0, y:0, zoom:1 };
+
+const scene = () => project.scenes.find(s=>s.id===state.sceneId) || project.scenes[0];
+const sceneIndex = sc => project.scenes.indexOf(sc);
+const obj = id => scene().objects.find(o=>o.id===id);
+const shotById = id => { for (const sc of project.scenes) { const s = sc.shots.find(x=>x.id===id); if (s) return [s, sc]; } return [null,null]; };
+const shotNum = (sc, s) => `${sceneIndex(sc)+1}${letters(sc.shots.indexOf(s))}`;
+const selObj = () => state.sel ? obj(state.sel.id) : null;
+const curShot = () => state.shotId ? shotById(state.shotId)[0] : null;
+const layerOf = o => o.layer || ((o.type === 'prop' && o.kind !== 'light') ? 'set' : 'block');
+const isLive = o => layerOf(o) === state.mode;
+const selIds = () => state.multi.length ? state.multi : state.sel ? [state.sel.id] : [];
+const isSelected = id => selIds().includes(id);
+const locById = id => (project.locations || []).find(l => l.id === id);
+
+function makeObject(type, kind, x, y, sc = scene()) {
+  if (type === 'actor') {
+    const n = sc.objects.filter(o=>o.type==='actor').length;
+    return { id:uid(), type, layer:'block', name:'Actor '+(n+1), color:COLORS[n%COLORS.length], x, y, rot:180, path:[] };
+  }
+  if (type === 'camera') {
+    const n = sc.objects.filter(o=>o.type==='camera').length;
+    return { id:uid(), type, layer:'block', name:'Cam '+letters(n), color:CAM_COLORS[n%CAM_COLORS.length], x, y, rot:0, lens:35, range:6, path:[] };
+  }
+  if (type === 'arrow') return { id:uid(), type, layer:'block', name:'Arrow', color:'#e7e9ee', x, y, pts:[{x,y},{x:x+100,y}], smooth:true, rot:0, width:3, style:'solid', head:'end', label:'', path:[] };
+  const p = PROPS[kind];
+  const o = { id:uid(), type:'prop', kind, layer: kind==='light' ? 'block' : kind==='text' ? state.mode : 'set', name:p.label, color:p.color, x, y, rot:0, w:p.w, h:p.h, path:[] };
+  if (kind === 'text') { o.text = 'LABEL'; o.size = 16; }
+  if (kind === 'light') { o.spread = 50; o.range = 4; o.rot = 135; }
+  if (kind === 'walls') { o.pts = []; o.closed = false; o.thick = 10; }
+  return o;
+}
+
+function demoProject() {
+  const s1 = { id:uid(), name:'INT. KITCHEN – NIGHT', notes:'Maya waits for Leo. He brings bad news.', objects:[], shots:[], open:true };
+  const s2 = { id:uid(), name:'EXT. STREET – NIGHT', notes:'', objects:[], shots:[], open:true };
+  const p = { app:'blockwise', version:2, id:uid(), name:'The News (sample)', scenes:[s1,s2] };
+  const P = (kind,x,y,rot=0,extra={}) => { const o = makeObject('prop',kind,x,y,s1); Object.assign(o,{rot},extra); s1.objects.push(o); return o; };
+  P('walls',0,0,0,{ name:'Kitchen', closed:true, pts:[{x:-200,y:-150},{x:200,y:-150},{x:200,y:150},{x:-200,y:150}] });
+  P('door',120,150,0,{h:12}); P('window',-60,-150,0,{w:90,h:12});
+  P('table',0,0,0,{w:110,h:70}); P('chair',-80,0,90); P('chair',80,0,-90);
+  P('sofa',-130,-110,180,{w:100});
+  P('text',60,-118,0,{text:'KITCHEN',size:14,color:'#5d6577',layer:'set'});
+  P('light',-175,-125,135);
+  const A = (props) => { const o = makeObject('actor',null,0,0,s1); Object.assign(o,props); s1.objects.push(o); return o; };
+  A({name:'MAYA',x:-80,y:0,rot:90,color:'#ff8ad8'});
+  A({name:'LEO',x:120,y:175,rot:0,color:'#ffb86b',path:[{x:120,y:60,rot:-30},{x:80,y:0,rot:-90}]});
+  const C = (props) => { const o = makeObject('camera',null,0,0,s1); Object.assign(o,props); s1.objects.push(o); return o; };
+  const camA = C({x:-30,y:95,rot:-5,lens:24});
+  const camB = C({x:-150,y:40,rot:75,lens:50});
+  const camC = C({x:170,y:-70,rot:-115,lens:50,path:[{x:140,y:-48,rot:-112}]});
+  const ar = makeObject('arrow',null,-60,-230,s1); Object.assign(ar,{pts:[{x:-60,y:-230},{x:-60,y:-165}],label:'MOONLIGHT',color:'#7fb7d9',style:'dashed',width:2}); s1.objects.push(ar);
+  const walk = makeObject('arrow',null,60,-60,s1); Object.assign(walk,{pts:[{x:-40,y:-70},{x:70,y:-70},{x:115,y:-30},{x:115,y:40}],label:'MAYA CIRCLES',color:'#ff8ad8',width:2}); s1.objects.push(walk);
+  p.locations = [{ id:uid(), name:'KITCHEN', objects:deep(s1.objects.filter(o => layerOf(o) === 'set')) }];
+  s1.locationId = p.locations[0].id;
+  s1.shots.push(
+    { id:uid(), cameraId:camA.id, size:'WS', angle:'Eye level', move:'Static', duration:25, desc:'Master — Leo enters and sits across from Maya.', notes:'', done:false },
+    { id:uid(), cameraId:camB.id, size:'OTS', angle:'Eye level', move:'Static', duration:15, desc:'Over Maya onto Leo as he delivers the news.', notes:'', done:false },
+    { id:uid(), cameraId:camC.id, size:'MCU', angle:'Eye level', move:'Push in', duration:10, desc:'Slow push on Maya as it sinks in.', notes:'Dolly track along counter', done:false },
+  );
+  const car = makeObject('prop','car',0,0,s2); car.rot = 90; s2.objects.push(car);
+  for (const y of [-90, 90]) { const c = makeObject('prop','walls',0,y,s2); Object.assign(c,{name:'Curb',color:'#4a5160',thick:6,pts:[{x:-350,y:0},{x:350,y:0}]}); s2.objects.push(c); }
+  return p;
+}
+
+// ---------- project library ----------
+// Desktop app: each project is a "<name>.blockwise.json" file in the library folder the user picks (like an Obsidian vault).
+// Browser preview: falls back to localStorage.
+const host = window.blockwiseHost || null;
+const FORMAT = 2;   // bump when the project file shape changes, and add the migration to normalizeProject
+const LIB_KEY = 'blockwise.library', PKEY = id => 'blockwise.p.' + id;
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const lsDel = k => { try { localStorage.removeItem(k); } catch (e) {} };
+let library = [];
+const projCache = {};
+const validProject = p => p && Array.isArray(p.scenes) && p.scenes.length && p.scenes.every(s=>Array.isArray(s.objects)&&Array.isArray(s.shots));
+// bring older files up to the current shape (multi-point arrows, locations)
+function normalizeProject(p) {
+  if ((p.version || 1) > FORMAT && !p._warned) { p._warned = true; setTimeout(() => toast('This project was saved by a newer Blockwise. Update the app before editing it.'), 300); }
+  p.app = 'blockwise'; p.version = Math.max(p.version || 1, FORMAT);
+  p.locations = p.locations || [];
+  const fix = o => {
+    if (o.type !== 'arrow' || o.pts) return;
+    const sx = o.x, sy = o.y, ex = o.x2 ?? o.x + 100, ey = o.y2 ?? o.y, len = Math.hypot(ex-sx, ey-sy) || 1, b = o.bend || 0;
+    o.pts = [{ x:sx, y:sy }];
+    if (b) o.pts.push({ x:Math.round((sx+ex)/2 - (ey-sy)/len*b/2), y:Math.round((sy+ey)/2 + (ex-sx)/len*b/2) });
+    o.pts.push({ x:ex, y:ey }); o.smooth = true; delete o.x2; delete o.y2; delete o.bend;
+  };
+  p.scenes.forEach(s => s.objects.forEach(fix));
+  p.locations.forEach(l => l.objects.forEach(fix));
+  return p;
+}
+function loadLibrary() {
+  for (const k in projCache) delete projCache[k];
+  if (host) { library = host.list(); if (!library.length && host.isNewFolder()) storeProject(demoProject()); return; }
+  try { library = JSON.parse(lsGet(LIB_KEY)) || []; } catch (e) { library = []; }
+  const old = lsGet('blockwise.project'); // migrate the single-project prototype
+  if (old) { try { const p = JSON.parse(old); if (validProject(p)) { p.id = p.id || uid(); storeProject(p); } } catch (e) {} lsDel('blockwise.project'); }
+  if (!library.length) storeProject(demoProject());
+}
+function storeProject(p) {
+  p.updated = Date.now(); projCache[p.id] = p;
+  if (host) { const { _warned, ...clean } = p; if (!host.write(clean)) toast("Couldn't save to the library folder"); }
+  else lsSet(PKEY(p.id), JSON.stringify(p));
+  const e = library.find(x=>x.id===p.id);
+  if (e) { e.name = p.name; e.updated = p.updated; } else library.unshift({ id:p.id, name:p.name, updated:p.updated });
+  if (!host) lsSet(LIB_KEY, JSON.stringify(library));
+}
+function readProject(id) {
+  if (projCache[id]) return projCache[id];
+  try { const p = host ? host.read(id) : JSON.parse(lsGet(PKEY(id))); if (validProject(p)) return projCache[id] = normalizeProject(p); } catch (e) {}
+  return null;
+}
+function deleteProject(id) {
+  if (host) host.remove(id); else lsDel(PKEY(id));
+  delete projCache[id]; library = library.filter(x=>x.id!==id);
+  if (!host) lsSet(LIB_KEY, JSON.stringify(library));
+}
+// never lose the last few edits when the window closes (or the app restarts to update)
+window.addEventListener('beforeunload', () => { if (project) { clearTimeout(saveTimer); storeProject(project); } });
+async function chooseLibraryFolder() {
+  if (!host) return;
+  if (project) goHome();
+  const d = await host.chooseFolder(); if (!d) return;
+  loadLibrary(); renderHome(); toast('Library folder changed');
+}
+// pick up files added or changed in the folder outside the app (copied in, synced from another computer)
+window.addEventListener('focus', () => { if (host && state.view === 'home') { loadLibrary(); renderHome(); } });
+
+function openProject(id) {
+  const p = readProject(id); if (!p) { toast("Couldn't open that project"); return; }
+  project = normalizeProject(p); undoStack = []; redoStack = [];
+  for (const k in views) delete views[k];
+  state.sceneId = p.scenes[0].id; state.sel = null; state.multi = []; state.shotId = null; state.sceneSelected = false; state.draw = null; state.tool = 'select';
+  applyMode(hasSet(scene()) ? 'block' : 'set');
+  setView('diagram');
+  requestAnimationFrame(() => { fitView(); refreshAll(); });
+}
+function goHome() {
+  if (project && checkLocationEdits(scene())) return;   // answer the location question first, then leave
+  if (project) { clearTimeout(saveTimer); storeProject(project); }
+  stopPlayback(); hideMenu(); project = null; setView('home');
+}
+function newProject(thenImport) {
+  const s = { id:uid(), name:'INT. LOCATION – DAY', notes:'', objects:[], shots:[], open:true };
+  const p = { app:'blockwise', version:2, id:uid(), name:'Untitled Project', scenes:[s] };
+  storeProject(p); openProject(p.id);
+  if (thenImport) setTimeout(openImport, 50);
+  else setTimeout(() => { $('#projName').focus(); $('#projName').select(); }, 50);
+}
+
+// ---------- undo / persistence ----------
+const snapshot = () => JSON.stringify(project);
+function pushUndo(snap = snapshot()) { undoStack.push(snap); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; updateHeader(); }
+function undo() { if (!undoStack.length) return; redoStack.push(snapshot()); project = JSON.parse(undoStack.pop()); afterLoad(); }
+function redo() { if (!redoStack.length) return; undoStack.push(snapshot()); project = JSON.parse(redoStack.pop()); afterLoad(); }
+function afterLoad() {
+  if (!project.scenes.find(s=>s.id===state.sceneId)) state.sceneId = project.scenes[0].id;
+  const o = selObj();
+  if (state.sel && !o) state.sel = null;
+  else if (o && state.sel.pt >= o.path.length) state.sel.pt = -1;
+  if (state.shotId && !curShot()) state.shotId = null;
+  state.multi = state.multi.filter(id => obj(id));
+  refreshAll(); save();
+}
+let saveTimer;
+function save() { if (!project) return; clearTimeout(saveTimer); const p = project; saveTimer = setTimeout(() => storeProject(p), 300); }
+
+function download(name, blob) {
+  if (host) { blob.arrayBuffer().then(buf => host.saveAs(name, new Uint8Array(buf))).then(ok => { if (ok === false) toast("Couldn't save that file"); }); return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+const safeName = (p = project) => (p.name || 'project').replace(/[^\w\- ]+/g,'').trim() || 'project';
+function exportProjectFile(p = project) { download(`${safeName(p)}.blockwise.json`, new Blob([JSON.stringify(p,null,2)],{type:'application/json'})); toast('Project file exported'); }
+$('#fileIn').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const p = JSON.parse(await f.text());
+    if (!validProject(p)) throw new Error('bad');
+    p.id = uid(); p.name = p.name || f.name.replace(/\..*$/,'');
+    storeProject(normalizeProject(p)); openProject(p.id); toast(`Imported ${f.name}`);
+  } catch (err) { toast("That file isn't a Blockwise project"); }
+});
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('show'), 2000); }
+
+// ---------- geometry ----------
+function poses(o) { return [{x:o.x,y:o.y,rot:o.rot}, ...(o.path||[])]; }
+function ptPose(o, pt) { return pt < 0 ? o : o.path[pt]; }
+function poseAt(o, t) {
+  const P = poses(o);
+  if (t == null || P.length < 2) return P[0];
+  const s = clamp(t,0,1)*(P.length-1), i = Math.min(P.length-2, Math.floor(s));
+  let f = s - i; f = f*f*(3-2*f); // ease each move
+  const a = P[i], b = P[i+1];
+  return { x:a.x+(b.x-a.x)*f, y:a.y+(b.y-a.y)*f, rot:a.rot + normDeg(b.rot-a.rot)*f };
+}
+function toWorldOf(o, q) { const r = o.rot*Math.PI/180, c = Math.cos(r), s = Math.sin(r); return { x:o.x + q.x*c - q.y*s, y:o.y + q.x*s + q.y*c }; }
+function toLocalOf(o, w) { const r = -o.rot*Math.PI/180, c = Math.cos(r), s = Math.sin(r), dx = w.x-o.x, dy = w.y-o.y; return { x:dx*c - dy*s, y:dx*s + dy*c }; }
+function localBox(o) {
+  if (o.kind === 'walls' && o.pts.length) {
+    const xs = o.pts.map(p=>p.x), ys = o.pts.map(p=>p.y), t = o.thick/2;
+    return [Math.min(...xs)-t, Math.min(...ys)-t, Math.max(...xs)+t, Math.max(...ys)+t];
+  }
+  const [hw,hh] = halfSize(o); return [-hw,-hh,hw,hh];
+}
+function halfSize(o) {
+  if (o.type === 'actor') return [20,20];
+  if (o.type === 'camera') return [15,21];
+  if (o.type === 'arrow') return [10,10];
+  if (o.kind === 'walls') return [Math.max(10,...o.pts.map(p=>Math.abs(p.x)))+o.thick/2, Math.max(10,...o.pts.map(p=>Math.abs(p.y)))+o.thick/2];
+  if (o.kind === 'text') return [Math.max(20,(o.text||'').length*o.size*0.34), o.size*0.65];
+  if (o.kind === 'light') return [14,14];
+  return [o.w/2, o.h/2];
+}
+// arrows run through their points as a smooth (Catmull-Rom) curve, or as straight segments
+function arrowPath(o) {
+  const P = o.pts, n = P.length, segs = [];
+  for (let i = 0; i < n-1; i++) {
+    const p1 = P[i], p2 = P[i+1];
+    if (!o.smooth || n === 2) { segs.push({ p1, c1:p1, c2:p2, p2 }); continue; }
+    const p0 = P[i-1] || p1, p3 = P[i+2] || p2;
+    segs.push({ p1, c1:{ x:p1.x+(p2.x-p0.x)/6, y:p1.y+(p2.y-p0.y)/6 }, c2:{ x:p2.x-(p3.x-p1.x)/6, y:p2.y-(p3.y-p1.y)/6 }, p2 });
+  }
+  const f = q => `${rnd(q.x)} ${rnd(q.y)}`;
+  const d = `M ${f(P[0])}` + segs.map(s => ` C ${f(s.c1)} ${f(s.c2)} ${f(s.p2)}`).join('');
+  const mids = segs.map(s => ({ x:(s.p1.x+3*s.c1.x+3*s.c2.x+s.p2.x)/8, y:(s.p1.y+3*s.c1.y+3*s.c2.y+s.p2.y)/8 }));
+  const near = (a, b) => Math.hypot(a.x-b.x, a.y-b.y) < .5;
+  const last = segs[segs.length-1], first = segs[0];
+  const endFrom = near(last.c2, last.p2) ? last.p1 : last.c2, startFrom = near(first.c1, first.p1) ? first.p2 : first.c1;
+  return { d, segs, mids, endAng:Math.atan2(last.p2.y-endFrom.y, last.p2.x-endFrom.x)*180/Math.PI,
+    startAng:Math.atan2(first.p1.y-startFrom.y, first.p1.x-startFrom.x)*180/Math.PI };
+}
+// Shift-constrain a point to 0/45/90° from an anchor
+function constrain45(from, p, e) {
+  const a = Math.round(Math.atan2(p.y-from.y, p.x-from.x) / (Math.PI/4)) * (Math.PI/4);
+  let len = (p.x-from.x)*Math.cos(a) + (p.y-from.y)*Math.sin(a);
+  if (!noSnap(e)) len = Math.round(len/GRID)*GRID;
+  return { x:Math.round(from.x + Math.cos(a)*len), y:Math.round(from.y + Math.sin(a)*len) };
+}
+function bounds(sc, withCones) {
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  const add = (x,y,r=0) => { x0=Math.min(x0,x-r); y0=Math.min(y0,y-r); x1=Math.max(x1,x+r); y1=Math.max(y1,y+r); };
+  for (const o of sc.objects) {
+    if (o.type === 'arrow') { const g = arrowPath(o); o.pts.forEach(q => add(q.x, q.y, 12)); g.mids.forEach(q => add(q.x, q.y, 14)); continue; }
+    if (o.kind === 'walls') { for (const q of o.pts) { const w = toWorldOf(o,q); add(w.x, w.y, o.thick); } continue; }
+    for (const p of poses(o)) {
+      const [hw,hh] = halfSize(o); add(p.x, p.y, Math.hypot(hw,hh) + (o.type==='prop'?0:14));
+      if (withCones && o.type === 'camera') {
+        const L = o.range*M, a = fovOf(o.lens)/2;
+        for (const d of [-a, 0, a]) { const r = (p.rot+d)*Math.PI/180; add(p.x+Math.sin(r)*L, p.y-Math.cos(r)*L); }
+      }
+    }
+  }
+  return x0 === Infinity ? null : { x:x0, y:y0, w:x1-x0, h:y1-y0 };
+}
+const hasSet = sc => sc.objects.some(o => layerOf(o) === 'set');
+function wallSegments(sc) {
+  const segs = [];
+  for (const o of sc.objects) {
+    if (o.kind === 'walls') {
+      const W = o.pts.map(q => toWorldOf(o, q));
+      for (let i = 0; i < W.length - (o.closed ? 0 : 1); i++) segs.push({ a:W[i], b:W[(i+1)%W.length], thick:o.thick, center:o.closed ? { x:o.x, y:o.y } : null });
+    } else if (o.kind === 'wall') segs.push({ a:toWorldOf(o,{x:-o.w/2,y:0}), b:toWorldOf(o,{x:o.w/2,y:0}), thick:o.h });
+  }
+  return segs;
+}
+function nearestWall(p, maxD) {
+  let best = null, bd = maxD;
+  for (const s of wallSegments(scene())) {
+    const dx = s.b.x-s.a.x, dy = s.b.y-s.a.y, L2 = dx*dx+dy*dy || 1;
+    const t = clamp(((p.x-s.a.x)*dx + (p.y-s.a.y)*dy)/L2, 0, 1), x = s.a.x+dx*t, y = s.a.y+dy*t, d = Math.hypot(p.x-x, p.y-y);
+    if (d < bd) { bd = d; best = { x, y, ang:Math.atan2(dy,dx)*180/Math.PI, thick:s.thick, center:s.center }; }
+  }
+  return best;
+}
+// snap doors and windows onto the nearest wall, keeping whichever side they were facing
+// (or, when first placed in a closed room, swinging into the room)
+function applyWallSnap(o, rot0, inward) {
+  const s = nearestWall(o, 30); if (!s) return false;
+  o.x = Math.round(s.x); o.y = Math.round(s.y);
+  const a = normDeg(s.ang), b = normDeg(s.ang+180);
+  let pick = Math.abs(normDeg(rot0-a)) <= Math.abs(normDeg(rot0-b)) ? a : b;
+  if (inward && s.center) { const r = a*Math.PI/180; pick = Math.sin(r)*(s.center.x-o.x) - Math.cos(r)*(s.center.y-o.y) > 0 ? a : b; }
+  o.rot = Math.round(pick*10)/10;
+  o.h = Math.max(6, s.thick + 2);
+  return true;
+}
+
+// ---------- drawing ----------
+function lighten(hex, amt) {
+  const n = parseInt(hex.slice(1),16); let r=n>>16, g=(n>>8)&255, b=n&255;
+  const f = v => Math.round(clamp(v + (amt>0 ? (255-v)*amt : v*amt), 0, 255));
+  return '#'+[f(r),f(g),f(b)].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+function propSVG(o) {
+  const w=o.w, h=o.h, hw=w/2, hh=h/2, c=o.color, dk=lighten(c,-.35), lt=lighten(c,.25);
+  switch (o.kind) {
+    case 'walls': {
+      if (!o.pts.length) return '';
+      const d = 'M ' + o.pts.map(p=>`${rnd(p.x)} ${rnd(p.y)}`).join(' L ') + (o.closed ? ' Z' : '');
+      return `${o.closed?`<path d="${d}" fill="${c}" fill-opacity=".05" pointer-events="none"/>`:''}<path d="${d}" fill="none" stroke="${c}" stroke-width="${o.thick}" stroke-linejoin="miter" stroke-linecap="square" pointer-events="visibleStroke"/>`;
+    }
+    case 'wall': return `<rect x="${-hw}" y="${-hh}" width="${w}" height="${h}" fill="${c}"/>`;
+    case 'door': return `<g transform="scale(${o.mirror?-1:1} 1)"><rect x="${-hw}" y="${-hh}" width="${w}" height="${h}" fill="${BG}" stroke="${c}" stroke-width="1.5"/>
+      <path d="M ${-hw} ${-hh} L ${-hw} ${-hh-w}" stroke="${c}" stroke-width="3" stroke-linecap="round"/>
+      <path d="M ${-hw} ${-hh-w} A ${w} ${w} 0 0 1 ${hw} ${-hh}" fill="none" stroke="${c}" stroke-width="1" stroke-dasharray="3 3"/></g>`;
+    case 'window': return `<rect x="${-hw}" y="${-hh}" width="${w}" height="${h}" fill="${BG}" stroke="${c}" stroke-width="1.5"/><line x1="${-hw}" y1="0" x2="${hw}" y2="0" stroke="${c}" stroke-width="1.5"/>`;
+    case 'table': return `<rect x="${-hw}" y="${-hh}" width="${w}" height="${h}" rx="4" fill="${c}" stroke="${lt}" stroke-width="1.5"/>`;
+    case 'roundtable': return `<ellipse rx="${hw}" ry="${hh}" fill="${c}" stroke="${lt}" stroke-width="1.5"/>`;
+    case 'chair': return `<rect x="${-hw}" y="${-hh}" width="${w}" height="${h}" rx="4" fill="${c}"/><rect x="${-hw}" y="${hh-h*.28}" width="${w}" height="${h*.28}" rx="3" fill="${dk}"/>`;
+    case 'sofa': { const a=Math.min(w*.14,16), bk=h*.32;
+      return `<rect x="${-hw}" y="${-hh}" width="${w}" height="${h}" rx="6" fill="${c}"/><rect x="${-hw}" y="${hh-bk}" width="${w}" height="${bk}" rx="5" fill="${dk}"/>
+      <rect x="${-hw}" y="${-hh}" width="${a}" height="${h}" rx="5" fill="${dk}"/><rect x="${hw-a}" y="${-hh}" width="${a}" height="${h}" rx="5" fill="${dk}"/>`; }
+    case 'bed': { const pw=w*.38, ph=Math.min(h*.14,18);
+      return `<rect x="${-hw}" y="${-hh}" width="${w}" height="${h}" rx="5" fill="${dk}"/><rect x="${-hw+4}" y="${-hh+h*.3}" width="${w-8}" height="${h*.7-4}" rx="4" fill="${c}"/>
+      <rect x="${-pw-3}" y="${-hh+6}" width="${pw}" height="${ph}" rx="4" fill="${lt}"/><rect x="3" y="${-hh+6}" width="${pw}" height="${ph}" rx="4" fill="${lt}"/>`; }
+    case 'car': {
+      const ws = (a,b,i) => `<path d="M ${-hw+i} ${-hh+h*a} L ${hw-i} ${-hh+h*a} L ${hw-i-6} ${-hh+h*b} L ${-hw+i+6} ${-hh+h*b} Z" fill="#9fc3e0" opacity=".55"/>`;
+      return `<rect x="${-hw}" y="${-hh}" width="${w}" height="${h}" rx="${w*.28}" fill="${c}" stroke="${lt}" stroke-width="1.5"/>${ws(.24,.36,7)}<rect x="${-hw+10}" y="${-hh+h*.38}" width="${w-20}" height="${h*.34}" rx="6" fill="${dk}"/>${ws(.84,.75,9)}`; }
+    case 'tree': { const r=Math.min(hw,hh);
+      return `<circle r="${r}" fill="${c}" opacity=".85"/><circle cx="${-r*.3}" cy="${-r*.25}" r="${r*.5}" fill="${lt}" opacity=".35"/><circle cx="${r*.3}" cy="${r*.3}" r="${r*.4}" fill="${dk}" opacity=".45"/><circle r="${r*.12}" fill="${dk}"/>`; }
+    case 'light': return `<rect x="-8" y="-6" width="16" height="14" rx="2" fill="#252a35" stroke="${c}" stroke-width="2"/><path d="M -8 -6 L -12 -13 M 8 -6 L 12 -13" stroke="${c}" stroke-width="2" stroke-linecap="round"/><circle cy="1" r="3" fill="${c}"/>`;
+    case 'text': { const [tw,th] = halfSize(o);
+      return `<rect x="${-tw}" y="${-th}" width="${tw*2}" height="${th*2}" fill="transparent"/><text font-family="Inter,Segoe UI,sans-serif" font-size="${o.size}" font-weight="700" letter-spacing="1.5" fill="${c}" text-anchor="middle" dominant-baseline="central">${esc(o.text)}</text>`; }
+  }
+  return '';
+}
+function shapeSVG(o) {
+  const c = o.color;
+  if (o.type === 'actor') return `<ellipse rx="19" ry="11" fill="${c}" opacity=".5"/><path d="M -5 -8 L 0 -19 L 5 -8 Z" fill="${c}"/><circle r="10" fill="${c}" stroke="#0d0f14" stroke-width="2"/>`;
+  if (o.type === 'camera') return `<path d="M -7 -10 L -11 -21 L 11 -21 L 7 -10 Z" fill="${c}"/><rect x="-13" y="-10" width="26" height="22" rx="4" fill="#1a1e27" stroke="${c}" stroke-width="2"/><circle cy="1" r="3.5" fill="${c}"/>`;
+  return propSVG(o);
+}
+function arrowSVG(o, attrs) {
+  const g = arrowPath(o), w = o.width || 3, c = o.color, hl = 9 + w*2, hw = 4 + w, P = o.pts;
+  const head = (q, a) => `<path d="M 0 0 L ${-hl} ${-hw} L ${-hl*.7} 0 L ${-hl} ${hw} Z" transform="translate(${rnd(q.x)} ${rnd(q.y)}) rotate(${rnd(a)})" fill="${c}"/>`;
+  let lbl = '';
+  if (o.label) {
+    const i = Math.floor((g.segs.length-1)/2), s = g.segs[i], m = g.mids[i];
+    const len = Math.hypot(s.p2.x-s.p1.x, s.p2.y-s.p1.y) || 1;
+    let nx = -(s.p2.y-s.p1.y)/len, ny = (s.p2.x-s.p1.x)/len; if (ny > 0) { nx = -nx; ny = -ny; }   // label sits above the line
+    lbl = label(m.x + nx*14, m.y + ny*14 + 4, o.label, c, 11, 700);
+  }
+  return `<g ${attrs}><path d="${g.d}" stroke="transparent" stroke-width="16" fill="none"/>
+    <path d="${g.d}" stroke="${c}" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round" ${o.style==='dashed'?`stroke-dasharray="${w*3} ${w*2.5}"`:''}/>
+    ${o.head !== 'none' ? head(P[P.length-1], g.endAng) : ''}${o.head === 'both' ? head(P[0], g.startAng) : ''}${lbl}</g>`;
+}
+function conePath(fov, L, apex) {
+  const a = fov/2*Math.PI/180, x = Math.sin(a)*L, y = -Math.cos(a)*L - apex;
+  return `M 0 ${-apex} L ${rnd(-x)} ${rnd(y)} A ${L} ${L} 0 0 1 ${rnd(x)} ${rnd(y)} Z`;
+}
+const tf = p => `translate(${rnd(p.x)} ${rnd(p.y)}) rotate(${rnd(p.rot)})`;
+const label = (x, y, txt, fill='#c3c8d4', size=11, weight=600) =>
+  `<text x="${rnd(x)}" y="${rnd(y)}" font-family="Inter,Segoe UI,sans-serif" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="middle" paint-order="stroke" stroke="${BG}" stroke-width="3" stroke-linejoin="round" pointer-events="none">${esc(txt)}</text>`;
+const gridDefs = z => `<pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M 25 0 V 50 M 0 25 H 50" stroke="#191d25" stroke-width="${1/z}"/><path d="M 0 0 V 50 M 0 0 H 50" stroke="#20252f" stroke-width="${1/z}"/></pattern>`;
+
+function renderLayers({ clean = false, sc = scene(), thumb = false } = {}) {
+  const t = clean ? null : state.playT, z = clean ? 1 : view.zoom;
+  const shot = clean ? null : curShot();
+  const focusCam = shot && shot.cameraId;
+  const sel = clean ? null : state.sel;
+  let cones='', props='', paths='', ghosts='', figs='', arrows='', labels='', top='';
+  for (const o of sc.objects) {
+    const live = !clean && isLive(o);
+    const attr = clean ? '' : live ? `data-id="${o.id}"` : `data-lock="${o.id}"`;
+    const locked = !clean && !live && state.mode === 'set';   // dim actors/cameras while the set is being edited
+    const pose = poseAt(o, t), hasPath = o.path && o.path.length > 0;
+    const dim = focusCam && o.type === 'camera' && o.id !== focusCam;
+    const isSel = sel && sel.id === o.id;
+    const gop = dim ? .35 : locked ? .4 : 1;
+    if (o.type === 'arrow') { arrows += arrowSVG(o, `${attr}${gop<1?` opacity="${gop}"`:''}`); continue; }
+    // view cones + light beams
+    if (state.showCones && o.type === 'camera') {
+      const fov = fovOf(o.lens), L = o.range*M, focus = focusCam === o.id;
+      const op = dim ? .03 : focus ? .2 : .1;
+      cones += `<g transform="${tf(pose)}" opacity="${dim?.4:locked?.45:1}"><path d="${conePath(fov,L,21)}" fill="${o.color}" fill-opacity="${op}" stroke="${o.color}" stroke-opacity="${focus?.8:.45}" stroke-width="${1.2/z}"/><line x1="0" y1="-21" x2="0" y2="${-21-L}" stroke="${o.color}" stroke-opacity=".25" stroke-dasharray="${4/z} ${4/z}" stroke-width="${1/z}"/></g>`;
+      if (isSel && hasPath) for (const p of o.path) cones += `<path transform="${tf(p)}" d="${conePath(fov,L,21)}" fill="none" stroke="${o.color}" stroke-opacity=".3" stroke-dasharray="${5/z} ${4/z}" stroke-width="${1/z}"/>`;
+    }
+    if (state.showCones && o.kind === 'light')
+      cones += `<path transform="${tf(pose)}" d="${conePath(o.spread,o.range*M,8)}" fill="${o.color}" fill-opacity="${locked?.03:.07}" stroke="${o.color}" stroke-opacity=".2" stroke-width="${1/z}"/>`;
+    // movement paths + ghost positions
+    if (hasPath && state.showPaths) {
+      const P = poses(o), pc = o.type === 'prop' ? '#aab2c0' : o.color;
+      paths += `<g opacity="${locked?.35:.85}"><path d="M ${P.map(p=>`${rnd(p.x)} ${rnd(p.y)}`).join(' L ')}" fill="none" stroke="${pc}" stroke-width="2" stroke-dasharray="7 5"/>`;
+      for (let i = 0; i < P.length-1; i++) {
+        const a = P[i], b = P[i+1], ang = Math.atan2(b.y-a.y, b.x-a.x)*180/Math.PI;
+        paths += `<path d="M -6 -5 L 5 0 L -6 5 Z" fill="${pc}" transform="translate(${rnd((a.x+b.x)/2)} ${rnd((a.y+b.y)/2)}) rotate(${rnd(ang)})"/>`;
+      }
+      paths += '</g>';
+      P.forEach((p, i) => {
+        const pt = i - 1, isMain = pt === -1 && t == null;
+        if (!isMain) ghosts += `<g ${attr} ${live && pt>=0 ? `data-pt="${pt}"` : ''} transform="${tf(p)}" opacity="${locked?.18:.38}">${shapeSVG(o)}</g>`;
+        if (thumb) return;
+        const on = isSel && sel.pt === pt;
+        top += `<g transform="translate(${rnd(p.x+17)} ${rnd(p.y-17)})" pointer-events="none" opacity="${locked?.4:1}"><circle r="8" fill="${on?'#fff':pc}" stroke="${BG}" stroke-width="2"/><text font-family="Inter,sans-serif" font-size="9.5" font-weight="800" fill="#0b0d12" text-anchor="middle" dominant-baseline="central">${i+1}</text></g>`;
+      });
+    }
+    const g = `<g ${attr} transform="${tf(pose)}"${gop<1?` opacity="${gop}"`:''}>${shapeSVG(o)}</g>`;
+    if (o.type === 'prop') props += g; else figs += g;
+    if (thumb) continue;
+    if (o.type === 'actor') labels += `<g opacity="${gop}">${label(pose.x, pose.y+33, o.name, lighten(o.color,.3))}</g>`;
+    if (o.type === 'camera') {
+      const nums = sc.shots.filter(s=>s.cameraId===o.id).map(s=>shotNum(sc,s)).join(' · ');
+      const ly = pose.y + 34;
+      labels += `<g opacity="${gop<1?gop:1}">${label(pose.x, ly, `${o.name}  ${o.lens}mm`, o.color)}${nums ? label(pose.x, ly+13, nums, '#e7e9ee', 10, 700) : ''}</g>`;
+    }
+  }
+  // selection + handles
+  let selection = '';
+  const so = sel && obj(sel.id), k = 1/z, H = '#6ea8ff';
+  const plus = (q, attrs) => `<g ${attrs} transform="translate(${rnd(q.x)} ${rnd(q.y)})"><circle r="${6*k}" fill="#0e1014" fill-opacity=".85" stroke="${H}" stroke-opacity=".6" stroke-width="${k}"/><path d="M ${-3*k} 0 H ${3*k} M 0 ${-3*k} V ${3*k}" stroke="${H}" stroke-width="${1.5*k}"/></g>`;
+  if (!clean && state.multi.length) {
+    for (const id of state.multi) {
+      const o = obj(id), b = o && bounds({ objects:[o] }, false); if (!b) continue;
+      selection += `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="${H}" stroke-width="${1.5*k}" stroke-dasharray="${5*k} ${3*k}" pointer-events="none"/>`;
+    }
+  } else if (so && so.type === 'arrow') {
+    const g = arrowPath(so);
+    selection = `<path d="${g.d}" fill="none" stroke="${H}" stroke-width="${1.5*k}" stroke-dasharray="${5*k} ${3*k}" pointer-events="none"/>`
+      + g.mids.map((m, i) => plus(m, `data-handle="am" data-vi="${i}"`)).join('')
+      + so.pts.map((q, i) => `<circle data-handle="ap" data-vi="${i}" cx="${q.x}" cy="${q.y}" r="${6*k}" fill="${i===0||i===so.pts.length-1?'#0e1014':H}" stroke="${H}" stroke-width="${2*k}"/>`).join('');
+  } else if (so) {
+    const p = sel.pt >= 0 ? so.path[sel.pt] : so;
+    const [x0,y0,x1,y1] = localBox(so), pad = 5*k, cx = (x0+x1)/2;
+    const resizable = so.type === 'prop' && !['text','light','walls'].includes(so.kind) && sel.pt < 0;
+    let verts = '';
+    if (so.kind === 'walls') {
+      const n = so.pts.length;
+      for (let i = 0; i < n - (so.closed ? 0 : 1); i++) {
+        const a = so.pts[i], b = so.pts[(i+1)%n];
+        verts += plus({ x:(a.x+b.x)/2, y:(a.y+b.y)/2 }, `data-handle="vm" data-vi="${i}"`);
+      }
+      so.pts.forEach((q, i) => verts += `<circle data-handle="v" data-vi="${i}" cx="${q.x}" cy="${q.y}" r="${6*k}" fill="${H}" stroke="#0e1014" stroke-width="${2*k}"/>`);
+    }
+    selection = `<g transform="${tf(p)}">
+      <rect x="${x0-pad}" y="${y0-pad}" width="${x1-x0+pad*2}" height="${y1-y0+pad*2}" fill="none" stroke="${H}" stroke-width="${1.5*k}" stroke-dasharray="${5*k} ${3*k}" pointer-events="none"/>
+      <line x1="${cx}" y1="${y0-pad}" x2="${cx}" y2="${y0-pad-20*k}" stroke="${H}" stroke-width="${1.5*k}"/>
+      <circle data-handle="rot" cx="${cx}" cy="${y0-pad-24*k}" r="${6*k}" fill="#0e1014" stroke="${H}" stroke-width="${2*k}"/>
+      ${resizable ? `<rect data-handle="resize" x="${x1+pad-5*k}" y="${y1+pad-5*k}" width="${10*k}" height="${10*k}" fill="${H}" stroke="#0e1014" stroke-width="${k}"/>` : ''}
+      ${verts}</g>`;
+  }
+  // in-progress wall / room drawing
+  let draft = '';
+  const d = !clean && state.draw, A = '#ffb86b';
+  if (d && d.kind === 'walls') {
+    const pts = [...d.pts, d.cur], last = d.pts[d.pts.length-1], len = Math.hypot(d.cur.x-last.x, d.cur.y-last.y)/M;
+    draft = `<path d="M ${pts.map(q=>`${q.x} ${q.y}`).join(' L ')}" fill="none" stroke="${A}" stroke-opacity=".6" stroke-width="10" stroke-linejoin="miter" pointer-events="none"/>`
+      + d.pts.map((q,i) => `<circle cx="${q.x}" cy="${q.y}" r="${(i===0&&d.pts.length>=3?8:4)*k}" fill="${i===0&&d.pts.length>=3?'none':A}" stroke="${A}" stroke-width="${2*k}" pointer-events="none"/>`).join('')
+      + (len > 0.05 ? label((d.cur.x+last.x)/2, (d.cur.y+last.y)/2 - 12, `${len.toFixed(2)} m`, A, 11/Math.max(z,.6)) : '');
+  } else if (d && d.kind === 'room') {
+    const x = Math.min(d.a.x,d.b.x), y = Math.min(d.a.y,d.b.y), w = Math.abs(d.b.x-d.a.x), h = Math.abs(d.b.y-d.a.y);
+    draft = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${A}" fill-opacity=".05" stroke="${A}" stroke-opacity=".6" stroke-width="10" pointer-events="none"/>` + label(x+w/2, y+h/2+4, `${(w/M).toFixed(1)} × ${(h/M).toFixed(1)} m`, A, 12/Math.max(z,.6));
+  } else if (d && d.kind === 'arrow') {
+    const tmp = { pts:[...d.pts, d.cur].filter((q,i,a) => i === 0 || Math.hypot(q.x-a[i-1].x, q.y-a[i-1].y) > 1), smooth:true, width:3, color:'#e7e9ee', head:'end', style:'solid' };
+    if (tmp.pts.length > 1) draft = `<g opacity=".6" pointer-events="none">${arrowSVG(tmp, '')}</g>`;
+    draft += d.pts.map(q => `<circle cx="${q.x}" cy="${q.y}" r="${4*k}" fill="#e7e9ee" pointer-events="none"/>`).join('');
+  } else if (d && d.kind === 'marquee') {
+    const x = Math.min(d.a.x,d.b.x), y = Math.min(d.a.y,d.b.y);
+    draft = `<rect x="${x}" y="${y}" width="${Math.abs(d.b.x-d.a.x)}" height="${Math.abs(d.b.y-d.a.y)}" fill="${H}" fill-opacity=".08" stroke="${H}" stroke-width="${k}" pointer-events="none"/>`;
+  } else if (!clean && state.tool === 'walls' && state.cursor) {
+    draft = `<circle cx="${state.cursor.x}" cy="${state.cursor.y}" r="${4*k}" fill="${A}" pointer-events="none"/>`;
+  }
+  return cones + props + paths + ghosts + figs + arrows + labels + top + selection + draft;
+}
+
+const svg = $('#canvas');
+function renderCanvas() {
+  if (!project || state.view !== 'diagram') return;
+  const W = svg.clientWidth, H = svg.clientHeight, z = view.zoom;
+  const x0 = -view.x/z, y0 = -view.y/z;
+  svg.innerHTML = `<defs>${gridDefs(z)}</defs><g transform="translate(${view.x} ${view.y}) scale(${z})"><rect x="${x0}" y="${y0}" width="${W/z}" height="${H/z}" fill="url(#grid)"/>${renderLayers()}</g>`;
+  $('#zoomVal').textContent = Math.round(z*100) + '%';
+  $('#empty').classList.toggle('show', scene().objects.length === 0 && !state.draw);
+  $('#stage').classList.toggle('setmode', state.mode === 'set');
+  svg.classList.toggle('placing', state.tool !== 'select' && state.tool !== 'pan');
+  svg.classList.toggle('panning', state.tool === 'pan' || spaceDown);
+  updateHint();
+}
+function updateHint() {
+  let t = '';
+  const loc = project && locById(scene().locationId);
+  if (state.tool === 'walls') t = state.draw ? 'Click to add corners · <kbd>Shift</kbd> = 45° · click the first corner to close · double-click or <kbd>Enter</kbd> to finish · <kbd>Backspace</kbd> removes a corner'
+    : 'Click to start a wall · <kbd>Shift</kbd> keeps lines at 45° · hold <kbd>Ctrl</kbd> to ignore the grid';
+  else if (state.tool === 'room') t = 'Drag to draw a room · <kbd>Shift</kbd> for a square';
+  else if (state.tool === 'arrow') t = state.draw ? 'Click to add points · double-click or <kbd>Enter</kbd> to finish · <kbd>Shift</kbd> = 45°'
+    : 'Drag for a straight arrow, or click point by point for a path';
+  else if (state.mode === 'set') t = `<b>Editing set</b>${loc ? ` · location <b>${esc(loc.name)}</b>` : ''} — actors &amp; cameras are locked · press <kbd>E</kbd> when done`;
+  const h = $('#hint'); h.innerHTML = t; h.classList.toggle('show', !!t);
+}
+
+function fitView() {
+  const W = svg.clientWidth || 800, H = svg.clientHeight || 600, b = bounds(scene(), false);
+  if (!b) { view = { x:W/2, y:H/2, zoom:1 }; return; }
+  const z = clamp(Math.min((W-160)/Math.max(b.w,1), (H-200)/Math.max(b.h,1)), .15, 1.6);
+  view = { zoom:z, x:W/2-(b.x+b.w/2)*z, y:H/2-(b.y+b.h/2)*z + 10 };
+}
+function zoomAt(f, cx, cy) {
+  const z = clamp(view.zoom*f, .1, 6); f = z/view.zoom;
+  view.x = cx - (cx-view.x)*f; view.y = cy - (cy-view.y)*f; view.zoom = z; renderCanvas();
+}
+
+// ---------- chrome: header / toolbar ----------
+function miniIcon(o) {
+  const [hw,hh] = o.kind === 'wall' ? [30,6] : halfSize(o);
+  const s = Math.max(hw,hh,14)*1.25 + (o.type==='camera'?6:0);
+  const off = o.type === 'camera' ? `transform="translate(0 ${s*.75})"` : '';
+  return `<svg class="pi" viewBox="${-s} ${-s} ${s*2} ${s*2}">${o.type==='camera'?`<path d="${conePath(54,s*.9,21)}" fill="${o.color}" fill-opacity=".2" ${off}/>`:''}<g ${off}>${shapeSVG(o)}</g></svg>`;
+}
+function toolMode(t) {
+  if (t === 'walls' || t === 'room') return 'set';
+  if (['actor','camera','arrow','prop:light'].includes(t)) return 'block';
+  if (t.startsWith('prop:') && t !== 'prop:text') return 'set';
+  return null;
+}
+function buildChrome() {
+  $('#bHome').innerHTML = `${ico('projects',14)} Projects`;
+  $('#bHome').onclick = goHome; $('#brand').onclick = () => { if (project) goHome(); };
+  $('#hbtns').innerHTML = `
+    <button class="ib" id="bUndo" data-tip="Undo  Ctrl+Z">${ico('undo')}</button>
+    <button class="ib" id="bRedo" data-tip="Redo  Ctrl+Shift+Z">${ico('redo')}</button>
+    <div class="sep"></div>
+    <button class="ib" id="bScript" data-tip="Import script">${ico('script')}</button>
+    <button class="ib" id="bSave" data-tip="Export project file">${ico('download')}</button>
+    <button class="ib" id="bPng" data-tip="Export diagram as PNG">${ico('image')}</button>
+    <div class="sep"></div>
+    <button class="ib" id="bHelp" data-tip="Shortcuts  ?">${ico('help')}</button>`;
+  $('#bUndo').onclick = undo; $('#bRedo').onclick = redo; $('#bScript').onclick = openImport;
+  $('#bSave').onclick = () => exportProjectFile(); $('#bPng').onclick = exportPNG; $('#bHelp').onclick = showHelp;
+  document.querySelector('[data-view=diagram]').innerHTML = `${ico('grid',14)} Diagram`;
+  document.querySelector('[data-view=list]').innerHTML = `${ico('list',14)} Shot list`;
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
+  $('#addScene').innerHTML = ico('plus',15); $('#addScene').onclick = addScene;
+  $('#impScript').innerHTML = ico('script',14); $('#impScript').onclick = openImport;
+  $('#projName').addEventListener('input', e => { project.name = e.target.value; save(); });
+
+  $('#toolbar').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.mode) { setMode(b.dataset.mode); return; }
+    if (b.dataset.tool) setTool(b.dataset.tool);
+    else if (b.id === 'tLoc') { const r = b.getBoundingClientRect(); locationMenu(r.left, r.bottom + 6); }
+    else if (b.id === 'tSnap') { state.snap = !state.snap; updateToolbar(); }
+    else if (b.id === 'tCones') { state.showCones = !state.showCones; updateToolbar(); renderCanvas(); }
+    else if (b.id === 'tPaths') { state.showPaths = !state.showPaths; updateToolbar(); renderCanvas(); }
+  });
+  $('#zoomui').innerHTML = `<button class="ib" id="zOut" data-tip="Zoom out">${ico('minus',15)}</button><span id="zoomVal">100%</span><button class="ib" id="zIn" data-tip="Zoom in">${ico('plus',15)}</button><button class="ib" id="zFit" data-tip="Fit to view  F">${ico('fit',15)}</button><span style="min-width:auto;padding:0 6px 0 4px;color:var(--dim)">grid 0.5 m</span>`;
+  $('#zOut').onclick = () => zoomAt(1/1.25, svg.clientWidth/2, svg.clientHeight/2);
+  $('#zIn').onclick = () => zoomAt(1.25, svg.clientWidth/2, svg.clientHeight/2);
+  $('#zFit').onclick = () => { fitView(); renderCanvas(); };
+  $('#playbar').innerHTML = `<button class="ib" id="pPlay" data-tip="Play moves  P"></button><input type="range" id="pSlide" min="0" max="1000" value="0"><span class="pl" id="pLbl"></span><button class="ib" id="pStop" data-tip="Back to marks">${ico('x',15)}</button>`;
+  $('#pPlay').onclick = togglePlay;
+  $('#pSlide').addEventListener('input', e => { state.playing = false; state.playT = e.target.value/1000; renderCanvas(); updatePlaybar(); });
+  $('#pStop').onclick = stopPlayback;
+  buildToolbar();
+}
+function buildToolbar() {
+  const m = state.mode;
+  const tool = (id, tip, inner) => `<button class="tool" data-tool="${id}" data-tip="${tip}">${inner}</button>`;
+  const mk = (type,kind) => { const o = makeObject(type,kind,0,0,{objects:[]}); if (type==='actor') {o.rot=0;o.color='#ff8ad8';} if (kind==='light') o.rot=0; if (kind==='text') o.text='Aa'; return o; };
+  const sep = '<div class="sep"></div>';
+  let html = `<div class="mode"><button data-mode="set" class="${m==='set'?'on':''}" data-tip="Build the set  E">${ico('brick',14)} Set</button><button data-mode="block" class="${m==='block'?'on':''}" data-tip="Block actors &amp; cameras  E">${ico('users',14)} Blocking</button></div>`
+    + tool('select','Select  V',ico('cursor',17)) + tool('pan','Pan  H / hold Space',ico('hand',17)) + sep;
+  for (const t of (m === 'set' ? SET_TOOLS : BLOCK_TOOLS)) {
+    if (t === '|') { html += sep; continue; }
+    if (t === 'walls') html += tool(t, 'Draw walls  W', ico('walls',17)+'<span class="lbl">Walls</span>');
+    else if (t === 'room') html += tool(t, 'Draw a room  R', ico('room',17)+'<span class="lbl">Room</span>');
+    else if (t === 'arrow') html += tool(t, 'Arrow  X', ico('arrow',17)+'<span class="lbl">Arrow</span>');
+    else if (t === 'actor') html += tool(t, 'Actor  A', miniIcon(mk('actor'))+'<span class="lbl">Actor</span>');
+    else if (t === 'camera') html += tool(t, 'Camera  C', miniIcon(mk('camera'))+'<span class="lbl">Camera</span>');
+    else { const k = t.slice(5), p = PROPS[k]; html += tool(t, p.label + (p.key?`  ${p.key.toUpperCase()}`:''), miniIcon(mk('prop',k))); }
+  }
+  if (m === 'set' && project) {
+    const loc = locById(scene().locationId);
+    html += sep + `<button class="tool" id="tLoc" data-tip="Save or load a location">${ico('pin',16)}<span class="lbl">${loc ? esc(loc.name) : 'Location'}</span></button>`;
+  }
+  html += sep
+    + `<button class="tool toggle" id="tSnap" data-tip="Snap to grid (hold Ctrl/⌘ to bypass)">${ico('magnet',17)}</button>`
+    + `<button class="tool toggle" id="tCones" data-tip="Show camera cones">${ico('cone',17)}</button>`
+    + `<button class="tool toggle" id="tPaths" data-tip="Show movement paths">${ico('route',17)}</button>`;
+  $('#toolbar').innerHTML = html;
+  updateToolbar();
+}
+function applyMode(m) {
+  if (state.mode !== m) {
+    if (state.mode === 'set' && project) checkLocationEdits(scene());
+    state.mode = m; state.multi = []; buildToolbar();
+  }
+  const o = project && state.sel && selObj();
+  if (o && !isLive(o)) state.sel = null;
+  if (toolMode(state.tool) && toolMode(state.tool) !== m) state.tool = 'select';
+}
+function setMode(m) { state.draw = null; applyMode(m); refreshAll(); }
+function setTool(t) {
+  const m = toolMode(t); if (m && m !== state.mode) applyMode(m);
+  if (state.draw && state.draw.kind !== t) state.draw = null;
+  state.tool = t; state.cursor = null; updateToolbar(); refreshAll();
+}
+function updateToolbar() {
+  document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === state.tool));
+  $('#tSnap').classList.toggle('on', state.snap); $('#tCones').classList.toggle('on', state.showCones); $('#tPaths').classList.toggle('on', state.showPaths);
+}
+function updateHeader() {
+  if (!project) return;
+  $('#bUndo').disabled = !undoStack.length; $('#bRedo').disabled = !redoStack.length;
+  if (document.activeElement !== $('#projName')) $('#projName').value = project.name || '';
+}
+function setView(v) {
+  state.view = v;
+  $('#app').classList.toggle('home', v === 'home'); $('#app').classList.toggle('list', v === 'list');
+  document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v === 'home') renderHome();
+  else if (v === 'list') { stopPlayback(); renderShotlist(); }
+  else requestAnimationFrame(renderCanvas);
+}
+
+// ---------- home (projects) ----------
+function thumbSVG(p) {
+  const sc = p.scenes.find(s => s.objects.length);
+  if (!sc) return `<span style="color:var(--dim);font-size:12px">No set yet</span>`;
+  const b = bounds(sc, false), pad = 30;
+  return `<svg viewBox="${b.x-pad} ${b.y-pad} ${b.w+pad*2} ${b.h+pad*2}" preserveAspectRatio="xMidYMid meet">${renderLayers({ clean:true, sc, thumb:true })}</svg>`;
+}
+function renderHome() {
+  const cards = library.slice().sort((a,b) => b.updated - a.updated).map(e => {
+    const p = readProject(e.id); if (!p) return '';
+    const shots = p.scenes.reduce((a,s) => a + s.shots.length, 0);
+    return `<div class="pcard" data-pid="${p.id}"><div class="thumb">${thumbSVG(p)}</div>
+      <div class="meta"><b>${esc(p.name)}</b><span>${plural(p.scenes.length,'scene')} · ${plural(shots,'shot')} · ${fmtAgo(p.updated)}</span></div>
+      <button class="ib more" data-more="${p.id}" data-tip="More">${ico('more',16,3)}</button></div>`;
+  }).join('');
+  $('#home').innerHTML = `<div class="home-head"><h1>Projects</h1>
+      <button class="btn" data-hact="import-file">${ico('open',14)} Open project file</button>
+      <button class="btn" data-hact="from-script">${ico('script',14)} New from script</button>
+      <button class="btn primary" data-hact="new">${ico('plus',14)} New project</button></div>
+    <div class="cards"><button class="newcard" data-hact="new">${ico('plus',22)}<span>New project</span></button>${cards}</div>
+    ${host ? `<div class="home-foot"><span>Library folder</span><button class="linkish" data-hact="reveal" data-tip="Show in ${host.platform === 'darwin' ? 'Finder' : 'Explorer'}">${esc(host.folder())}</button>
+      <button class="btn" data-hact="folder">${ico('open',14)} Change folder…</button><span class="ver">Blockwise ${esc(host.version)}</span></div>` : ''}`;
+}
+$('#home').addEventListener('click', e => {
+  const a = e.target.closest('[data-hact]');
+  if (a) { if (a.dataset.hact === 'folder') chooseLibraryFolder(); else if (a.dataset.hact === 'reveal') host.reveal(); else if (a.dataset.hact === 'new') newProject(false); else if (a.dataset.hact === 'from-script') newProject(true); else { $('#fileIn').value = ''; $('#fileIn').click(); } return; }
+  const more = e.target.closest('[data-more]');
+  if (more) { e.stopPropagation(); const r = more.getBoundingClientRect(); projectMenu(more.dataset.more, r.left, r.bottom + 4); return; }
+  const c = e.target.closest('.pcard'); if (c) openProject(c.dataset.pid);
+});
+$('#home').addEventListener('contextmenu', e => { const c = e.target.closest('.pcard'); if (!c) return; e.preventDefault(); projectMenu(c.dataset.pid, e.clientX, e.clientY); });
+function projectMenu(id, x, y) {
+  const p = readProject(id); if (!p) return;
+  showMenu(x, y, [
+    { header:'Project' },
+    { input:p.name, placeholder:'Project name', noUndo:true, onInput:v => { p.name = v; storeProject(p); const b = document.querySelector(`[data-pid="${id}"] .meta b`); if (b) b.textContent = v; } },
+    { label:'Open', icon:'open', act:() => openProject(id) },
+    { label:'Duplicate', icon:'copy', act:() => { const c = deep(p); c.id = uid(); c.name += ' copy'; storeProject(c); renderHome(); } },
+    { label:'Export project file', icon:'download', act:() => exportProjectFile(p) },
+    '-',
+    { label:'Delete project', icon:'trash', danger:true, act:() => { if (confirm(host ? `Delete "${p.name}"? Its file goes to the ${host.platform === 'darwin' ? 'Trash' : 'Recycle Bin'}.` : `Delete "${p.name}"? This can't be undone.`)) { deleteProject(id); renderHome(); } } },
+  ]);
+}
+
+// ---------- context menu ----------
+const menuEl = $('#menu');
+let menuItems = [], menuUndone = false;
+function showMenu(x, y, items) {
+  menuItems = items; menuUndone = false;
+  menuEl.innerHTML = items.map((it, i) => {
+    if (it === '-') return '<div class="msep"></div>';
+    if (it.header) return `<div class="mhead">${esc(it.header)}</div>`;
+    if (it.input !== undefined) return `<div class="mrow"><input type="text" data-i="${i}" value="${esc(it.input)}" placeholder="${esc(it.placeholder||'')}" spellcheck="false"></div>`;
+    if (it.swatches) return `<div class="mrow">${it.swatches.map(c=>`<button class="sw ${c===it.current?'on':''}" style="background:${c}" data-i="${i}" data-c="${c}"></button>`).join('')}</div>`;
+    if (it.chips) return `<div class="mrow">${it.label?`<span class="mlbl">${esc(it.label)}</span>`:''}${it.chips.map((c,j)=>`<button class="chip ${c.on?'on':''}" data-i="${i}" data-j="${j}">${esc(c.label)}</button>`).join('')}</div>`;
+    return `<button class="mi ${it.danger?'danger':''}" data-i="${i}" ${it.disabled?'disabled':''}>${it.icon?ico(it.icon,14):'<span style="width:14px"></span>'}<span>${esc(it.label)}</span>${it.kbd?`<span class="k">${esc(it.kbd)}</span>`:''}</button>`;
+  }).join('');
+  menuEl.style.left = x + 'px'; menuEl.style.top = y + 'px';
+  menuEl.classList.add('show');
+  const r = menuEl.getBoundingClientRect();
+  menuEl.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + 'px';
+  menuEl.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
+}
+function hideMenu() { menuEl.classList.remove('show'); }
+menuEl.addEventListener('click', e => {
+  const b = e.target.closest('[data-i]'); if (!b || b.tagName === 'INPUT') return;
+  const it = menuItems[+b.dataset.i];
+  hideMenu();
+  if (it.swatches) it.onPick(b.dataset.c);
+  else if (it.chips) it.chips[+b.dataset.j].act();
+  else if (it.act) it.act();
+});
+menuEl.addEventListener('input', e => {
+  const it = menuItems[+e.target.dataset.i]; if (!it) return;
+  if (!it.noUndo && !menuUndone) { pushUndo(); menuUndone = true; }
+  it.onInput(e.target.value);
+});
+menuEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === 'Escape') hideMenu(); e.stopPropagation(); });
+document.addEventListener('pointerdown', e => { if (!menuEl.contains(e.target)) hideMenu(); }, true);
+window.addEventListener('blur', hideMenu);
+window.addEventListener('resize', hideMenu);
+
+function multiMenu() {
+  const n = state.multi.length;
+  return [
+    { header:`${n} selected` },
+    { label:'Duplicate all', icon:'copy', kbd:'Ctrl+D', act:duplicateSel },
+    { label:'Delete all', icon:'trash', kbd:'Del', danger:true, act:deleteSel },
+    '-', { label:'Deselect', icon:'x', kbd:'Esc', act:() => { select(null); refreshAll(); } },
+  ];
+}
+// for arrows: pt = index of the point right-clicked (or -1); addAt = world point where "add point" was asked for
+function objectMenu(o, pt, addAt) {
+  const sc = scene(), items = [];
+  const nameKey = o.kind === 'text' ? 'text' : o.type === 'arrow' ? 'label' : 'name';
+  const typeLbl = o.type === 'prop' ? PROPS[o.kind].label : o.type === 'arrow' ? 'Arrow' : o.type[0].toUpperCase() + o.type.slice(1);
+  const redraw = () => { refreshAll(); save(); };
+  const set = fn => () => { pushUndo(); fn(); redraw(); };
+  items.push({ header: pt < 0 ? typeLbl : o.type === 'arrow' ? `Arrow · point ${pt+1}` : `${typeLbl} · mark ${pt+2}` });
+  items.push({ input:o[nameKey] || '', placeholder: o.type === 'arrow' ? 'Arrow label' : 'Name', onInput:v => { o[nameKey] = v; renderCanvas(); renderInspector(); renderSidebar(); save(); } });
+  items.push({ swatches: o.type === 'prop' ? PROP_COLORS.concat(o.kind==='light'||o.kind==='text'?['#ffd86b']:[]) : COLORS, current:o.color, onPick:c => { pushUndo(); o.color = c; redraw(); } });
+  items.push('-');
+  if (o.type === 'camera') {
+    items.push({ label:'Lens (mm)', chips: LENSES.map(l => ({ label:String(l), on:o.lens === l, act:set(() => o.lens = l) })) });
+    items.push({ label:'New shot from this camera', icon:'plus', act:() => addShot(o) });
+    const shots = sc.shots.filter(s => s.cameraId === o.id);
+    if (shots.length) items.push({ label:'Go to shot', chips: shots.map(s => ({ label:shotNum(sc,s), act:() => selectShot(s.id) })) });
+    items.push('-');
+  }
+  if (o.type !== 'arrow' && o.kind !== 'walls') {
+    items.push({ label:'Add movement mark', icon:'route', kbd:'M', act:addMove });
+    if (o.path.length) items.push({ label:'Play moves', icon:'play', kbd:'P', act:togglePlay });
+    if (pt >= 0) items.push({ label:`Remove mark ${pt+2}`, icon:'x', act:deleteSel });
+    if (o.path.length) items.push({ label:'Clear all movement', icon:'x', act:set(() => { o.path = []; state.sel.pt = -1; }) });
+    items.push({ label:'Rotate left 45°', icon:'rotl', kbd:'[', act:() => rotateSel(-45) }, { label:'Rotate right 45°', icon:'rotr', kbd:']', act:() => rotateSel(45) });
+    items.push('-');
+  }
+  if (o.kind === 'door' || o.kind === 'window') {
+    items.push({ label:'Flip side', icon:'flip', act:set(() => o.rot = normDeg(o.rot + 180)) });
+    if (o.kind === 'door') items.push({ label:'Flip hinge', icon:'flip', act:set(() => o.mirror = !o.mirror) });
+    items.push('-');
+  }
+  if (o.kind === 'walls') {
+    if (o.pts.length >= 3) items.push({ label: o.closed ? 'Open shape' : 'Close shape', icon:'walls', act:set(() => o.closed = !o.closed) });
+    items.push({ label:'Thickness (cm)', chips:[5,10,15,20,30].map(t => ({ label:String(t*2), on:o.thick === t, act:set(() => o.thick = t) })) });
+    items.push('-');
+  }
+  if (o.type === 'arrow') {
+    items.push({ label:'Line', chips:[['solid','Solid'],['dashed','Dashed']].map(([v,l]) => ({ label:l, on:o.style === v, act:set(() => o.style = v) })) });
+    items.push({ label:'Heads', chips:[['end','→'],['both','↔'],['none','—']].map(([v,l]) => ({ label:l, on:o.head === v, act:set(() => o.head = v) })) });
+    items.push({ label:'Width', chips:[1,2,3,5,8].map(w => ({ label:String(w), on:o.width === w, act:set(() => o.width = w) })) });
+    items.push({ label:'Corners', chips:[[true,'Smooth curve'],[false,'Sharp']].map(([v,l]) => ({ label:l, on:!!o.smooth === v, act:set(() => o.smooth = v) })) });
+    if (addAt) items.push({ label:'Add point here', icon:'plus', act:set(() => insertArrowPoint(o, addAt)) });
+    if (pt >= 0 && o.pts.length > 2) items.push({ label:'Delete this point', icon:'x', act:set(() => o.pts.splice(pt, 1)) });
+    items.push('-');
+  }
+  items.push({ label:'Bring to front', icon:'up', act:set(() => { sc.objects.splice(sc.objects.indexOf(o),1); sc.objects.push(o); }) });
+  items.push({ label:'Send to back', icon:'down', act:set(() => { sc.objects.splice(sc.objects.indexOf(o),1); sc.objects.unshift(o); }) });
+  items.push('-');
+  items.push({ label:'Duplicate', icon:'copy', kbd:'Ctrl+D', act:duplicateSel });
+  items.push({ label:'Delete', icon:'trash', kbd:'Del', danger:true, act:() => { state.sel.pt = -1; deleteSel(); } });
+  return items;
+}
+function canvasMenu(p) {
+  const at = { x:Math.round(p.x/GRID)*GRID, y:Math.round(p.y/GRID)*GRID };
+  const add = (type, kind) => () => {
+    pushUndo(); const o = makeObject(type, kind, at.x, at.y);
+    if (o.kind === 'door' || o.kind === 'window') applyWallSnap(o, 0, true);
+    scene().objects.push(o); select(o.id); state.shotId = null; refreshAll(); save();
+  };
+  const fit = { label:'Fit to view', icon:'fit', kbd:'F', act:() => { fitView(); renderCanvas(); } };
+  if (state.mode === 'block') return [
+    { header:'Blocking' },
+    { label:'Add actor here', icon:'users', kbd:'A', act:add('actor') },
+    { label:'Add camera here', icon:'camera', kbd:'C', act:add('camera') },
+    { label:'Add arrow here', icon:'arrow', kbd:'X', act:add('arrow') },
+    { label:'Add light here', icon:'cone', kbd:'L', act:add('prop','light') },
+    { label:'Add text here', icon:'text', kbd:'T', act:add('prop','text') },
+    '-', { label:'Add shot', icon:'plus', act:() => addShot() },
+    '-', { label:'Edit set', icon:'brick', kbd:'E', act:() => setMode('set') }, fit,
+  ];
+  return [
+    { header:'Set' },
+    { label:'Draw walls', icon:'walls', kbd:'W', act:() => setTool('walls') },
+    { label:'Draw a room', icon:'room', kbd:'R', act:() => setTool('room') },
+    { label:'Add door here', icon:'plus', kbd:'D', act:add('prop','door') },
+    { label:'Add window here', icon:'plus', act:add('prop','window') },
+    { label:'Add table here', icon:'plus', act:add('prop','table') },
+    { label:'Add text here', icon:'text', kbd:'T', act:add('prop','text') },
+    '-', { label:'Done editing set', icon:'users', kbd:'E', act:() => setMode('block') }, fit,
+  ];
+}
+
+// ---------- playback ----------
+function animated() { return scene().objects.some(o => o.path && o.path.length); }
+function playDuration() {
+  const s = curShot(); if (s && s.duration > 0) return s.duration;
+  const n = Math.max(0, ...scene().objects.map(o => (o.path||[]).length));
+  return Math.max(2, n*2);
+}
+let lastT = 0;
+function togglePlay() {
+  if (!animated()) { toast('Add a move to an actor or camera first (select it, press M)'); return; }
+  if (state.playing) { state.playing = false; updatePlaybar(); return; }
+  if (state.playT == null || state.playT >= 1) state.playT = 0;
+  state.playing = true; lastT = performance.now(); updatePlaybar(); requestAnimationFrame(tick);
+}
+function tick(now) {
+  if (!state.playing || !project) return;
+  state.playT = clamp(state.playT + Math.max(0, now-lastT)/1000/playDuration(), 0, 1); lastT = Math.max(lastT, now);
+  if (state.playT >= 1) state.playing = false;
+  renderCanvas(); updatePlaybar();
+  if (state.playing) requestAnimationFrame(tick);
+}
+function stopPlayback() { state.playing = false; if (state.playT != null) { state.playT = null; renderCanvas(); } if (project) updatePlaybar(); }
+function updatePlaybar() {
+  const on = animated(), d = playDuration();
+  $('#playbar').classList.toggle('off', !on);
+  $('#pPlay').innerHTML = state.playing ? pauseIco() : playIco();
+  $('#pSlide').value = Math.round((state.playT ?? 0)*1000);
+  $('#pLbl').textContent = on ? `${((state.playT??0)*d).toFixed(1)}s / ${d.toFixed(0)}s` : 'No moves yet';
+  $('#pStop').style.visibility = state.playT == null ? 'hidden' : 'visible';
+}
+
+// ---------- canvas interaction ----------
+let drag = null, spaceDown = false;
+function toWorld(e) { const r = svg.getBoundingClientRect(); return { x:(e.clientX-r.left-view.x)/view.zoom, y:(e.clientY-r.top-view.y)/view.zoom }; }
+// grid snap is on unless toggled off or Ctrl/⌘ is held; Shift constrains angles (45°), proportions and drag direction
+const noSnap = e => !state.snap || e.ctrlKey || e.metaKey;
+const snapv = (v, e) => noSnap(e) ? Math.round(v) : Math.round(v/GRID)*GRID;
+function select(id, pt = -1) { state.sel = id ? { id, pt } : null; state.multi = []; state.sceneSelected = false; }
+function setMulti(ids) {
+  ids = [...new Set(ids)];
+  if (ids.length <= 1) select(ids[0] || null);
+  else { state.sel = null; state.multi = ids; state.sceneSelected = false; }
+}
+function constrainVec(d) { const a = Math.round(Math.atan2(d.y, d.x)/(Math.PI/4))*(Math.PI/4), len = d.x*Math.cos(a) + d.y*Math.sin(a); return { x:Math.cos(a)*len, y:Math.sin(a)*len }; }
+// move an object, its movement marks and arrow points by a delta from a saved copy
+function translateFrom(o, orig, dx, dy) {
+  o.x = orig.x + dx; o.y = orig.y + dy;
+  if (o.type === 'arrow') o.pts = orig.pts.map(q => ({ x:q.x+dx, y:q.y+dy }));
+  if (o.path) o.path = orig.path.map(q => ({ ...q, x:q.x+dx, y:q.y+dy }));
+}
+function marqueeHits() {
+  const d = state.draw, x0 = Math.min(d.a.x,d.b.x), x1 = Math.max(d.a.x,d.b.x), y0 = Math.min(d.a.y,d.b.y), y1 = Math.max(d.a.y,d.b.y);
+  return scene().objects.filter(o => {
+    if (!isLive(o)) return false;
+    const b = bounds({ objects:[o] }, false); if (!b) return false;
+    if (o.kind === 'walls') return b.x >= x0 && b.x+b.w <= x1 && b.y >= y0 && b.y+b.h <= y1;   // rooms only when fully boxed
+    return b.x < x1 && b.x+b.w > x0 && b.y < y1 && b.y+b.h > y0;
+  }).map(o => o.id);
+}
+// arrows: drag for a straight arrow, or click point by point
+function arrowPoint(p, e) {
+  const d = state.draw, from = d && d.kind === 'arrow' ? d.pts[d.pts.length-1] : null;
+  return e.shiftKey && from ? constrain45(from, p, e) : { x:snapv(p.x,e), y:snapv(p.y,e) };
+}
+function finishArrow() {
+  const d = state.draw; state.draw = null;
+  const pts = d ? d.pts.filter((q,i,a) => i === 0 || Math.hypot(q.x-a[i-1].x, q.y-a[i-1].y) > 2) : [];
+  if (pts.length < 2) { renderCanvas(); return; }
+  pushUndo();
+  const o = makeObject('arrow', null, pts[0].x, pts[0].y); o.pts = pts;
+  scene().objects.push(o); select(o.id); state.shotId = null; state.tool = 'select';
+  updateToolbar(); refreshAll(); save();
+}
+function insertArrowPoint(o, p) {
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < o.pts.length-1; i++) {
+    const a = o.pts[i], b = o.pts[i+1], dx = b.x-a.x, dy = b.y-a.y, t = clamp(((p.x-a.x)*dx + (p.y-a.y)*dy)/((dx*dx+dy*dy)||1), 0, 1);
+    const d = Math.hypot(p.x-a.x-dx*t, p.y-a.y-dy*t); if (d < bd) { bd = d; best = i; }
+  }
+  o.pts.splice(best+1, 0, { x:Math.round(p.x), y:Math.round(p.y) });
+}
+// wall corners snap to existing wall corners first, then the grid
+function wallSnapPt(p, e, excludeId, from) {
+  if (e.shiftKey && from) return constrain45(from, p, e);
+  if (!noSnap(e)) {
+    let best = null, bd = 12/view.zoom;
+    const cand = [];
+    for (const o of scene().objects) if (o.kind === 'walls' && o.id !== excludeId) for (const q of o.pts) cand.push(toWorldOf(o, q));
+    if (state.draw && state.draw.pts) cand.push(...state.draw.pts);
+    for (const c of cand) { const d = Math.hypot(c.x-p.x, c.y-p.y); if (d < bd) { bd = d; best = c; } }
+    if (best) return { x:best.x, y:best.y };
+  }
+  return { x:snapv(p.x,e), y:snapv(p.y,e) };
+}
+function wallClick(e) {
+  const d = state.draw, sp = wallSnapPt(toWorld(e), e, null, d && d.kind === 'walls' ? d.pts[d.pts.length-1] : null);
+  if (!d || d.kind !== 'walls') { state.draw = { kind:'walls', pts:[sp], cur:sp }; renderCanvas(); return; }
+  const first = d.pts[0], last = d.pts[d.pts.length-1];
+  if (d.pts.length >= 3 && Math.hypot(sp.x-first.x, sp.y-first.y) < 1) return finishWalls(true);
+  if (Math.hypot(sp.x-last.x, sp.y-last.y) < 1) return finishWalls(false);
+  d.pts.push(sp); d.cur = sp; renderCanvas();
+}
+function finishWalls(closed) {
+  const d = state.draw; state.draw = null;
+  const pts = d ? d.pts.filter((q,i,a) => i === 0 || Math.hypot(q.x-a[i-1].x, q.y-a[i-1].y) > 2) : [];
+  if (pts.length < 2) { renderCanvas(); return; }
+  createWalls(pts, closed && pts.length >= 3);
+}
+function createWalls(pts, closed) {
+  pushUndo();
+  const xs = pts.map(q=>q.x), ys = pts.map(q=>q.y);
+  const cx = Math.round((Math.min(...xs)+Math.max(...xs))/2), cy = Math.round((Math.min(...ys)+Math.max(...ys))/2);
+  const o = makeObject('prop','walls',cx,cy);
+  o.pts = pts.map(q => ({ x:q.x-cx, y:q.y-cy })); o.closed = closed;
+  if (closed && pts.length === 4) o.name = 'Room';
+  scene().objects.push(o); select(o.id); state.tool = 'select'; state.cursor = null;
+  updateToolbar(); refreshAll(); save();
+}
+
+svg.addEventListener('pointerdown', e => {
+  if (e.button === 2) return;   // right button → context menu
+  svg.setPointerCapture(e.pointerId);
+  if (state.playing || state.playT != null) stopPlayback();
+  const p = toWorld(e), sc = scene();
+  const pan = () => { drag = { mode:'pan', sx:e.clientX, sy:e.clientY, vx:view.x, vy:view.y }; };
+  if (e.button === 1 || state.tool === 'pan' || spaceDown) return pan();
+  const sp = { x:snapv(p.x,e), y:snapv(p.y,e) };
+  if (state.tool === 'walls') return wallClick(e);
+  if (state.tool === 'room') { state.draw = { kind:'room', a:sp, b:sp }; drag = { mode:'room' }; renderCanvas(); return; }
+  if (state.tool === 'arrow') {
+    const q = arrowPoint(p, e), d = state.draw;
+    if (d && d.kind === 'arrow') {
+      const last = d.pts[d.pts.length-1];
+      if (Math.hypot(q.x-last.x, q.y-last.y) < 1) return finishArrow();   // second click on the same spot finishes
+      d.pts.push(q); d.cur = q; renderCanvas(); return;
+    }
+    state.draw = { kind:'arrow', pts:[q], cur:q };
+    drag = { mode:'arrowdraw', sx:e.clientX, sy:e.clientY, moved:false };
+    renderCanvas(); return;
+  }
+  if (state.tool !== 'select') {
+    pushUndo();
+    const [type, kind] = state.tool.split(':');
+    const o = makeObject(type, kind, sp.x, sp.y);
+    if (o.kind === 'door' || o.kind === 'window') applyWallSnap(o, 0, true);
+    sc.objects.push(o); select(o.id); state.shotId = null;
+    if (!e.shiftKey) state.tool = 'select';
+    updateToolbar(); refreshAll(); save();
+    drag = { mode:'move', id:o.id, pt:-1, p0:p, start:{ x:o.x, y:o.y }, orig:deep(o), sx:e.clientX, sy:e.clientY, snap:null, moved:true, rot0:o.rot };
+    return;
+  }
+  const h = e.target.closest('[data-handle]');
+  if (h && state.sel) {
+    const o = selObj(); let mode = h.dataset.handle, vi = +h.dataset.vi, snap = snapshot(), moved = false;
+    if (mode === 'vm' || mode === 'am') { // drag a "+" to insert a wall corner / arrow point
+      pushUndo(snap); snap = null; moved = true;
+      if (mode === 'vm') { const a = o.pts[vi], b = o.pts[(vi+1) % o.pts.length]; o.pts.splice(vi+1, 0, { x:(a.x+b.x)/2, y:(a.y+b.y)/2 }); mode = 'v'; }
+      else { const m = arrowPath(o).mids[vi]; o.pts.splice(vi+1, 0, { x:Math.round(m.x), y:Math.round(m.y) }); mode = 'ap'; }
+      vi++; renderCanvas();
+    }
+    drag = { mode, id:o.id, pt:state.sel.pt, vi, sx:e.clientX, sy:e.clientY, snap, moved, w0:o.w, h0:o.h };
+    return;
+  }
+  const g = e.target.closest('[data-id]');
+  if (g) {
+    const o = obj(g.dataset.id); if (!o) return;
+    if (state.multi.includes(o.id) || (e.shiftKey && !isSelected(o.id))) {
+      // Shift-click adds to the selection; dragging any selected object moves the whole group
+      const wasIn = state.multi.includes(o.id);
+      if (!wasIn) setMulti([...selIds(), o.id]);
+      const orig = {}; for (const id of selIds()) orig[id] = deep(obj(id));
+      drag = { mode:'gmove', p0:p, orig, sx:e.clientX, sy:e.clientY, snap:snapshot(), moved:false, toggleOff: wasIn && e.shiftKey ? o.id : null };
+      refreshAll(); return;
+    }
+    let pt = g.dataset.pt !== undefined ? +g.dataset.pt : -1, snap = snapshot(), moved = false;
+    if (e.altKey && o.type !== 'arrow' && o.kind !== 'walls') { // Alt-drag = drop a new mark and drag it
+      pushUndo(snap); snap = null; moved = true;
+      const from = ptPose(o, pt); o.path.splice(pt+1, 0, { x:from.x, y:from.y, rot:from.rot }); pt = pt+1;
+    }
+    select(o.id, pt);
+    if (state.shotId) { const s = curShot(); if (!s || s.cameraId !== o.id) state.shotId = null; }
+    const pose = ptPose(o, pt);
+    drag = { mode:'move', id:o.id, pt, p0:p, start:{ x:pose.x, y:pose.y }, orig:deep(o), sx:e.clientX, sy:e.clientY, snap, moved, rot0:o.rot };
+    refreshAll();
+    return;
+  }
+  // empty canvas: drag a box to select (pan with Space-drag, middle mouse or the hand tool)
+  if (!e.shiftKey) { if (state.sel || state.multi.length) select(null); else state.shotId = null; }
+  state.draw = { kind:'marquee', a:p, b:p, base: e.shiftKey ? selIds() : [] };
+  drag = { mode:'marquee' };
+  refreshAll();
+});
+svg.addEventListener('pointermove', e => {
+  const p = toWorld(e);
+  if (!drag) {
+    if (state.tool === 'walls') {
+      const d = state.draw, s = wallSnapPt(p, e, null, d && d.kind === 'walls' ? d.pts[d.pts.length-1] : null);
+      if (d) d.cur = s; else state.cursor = s; renderCanvas();
+    } else if (state.draw && state.draw.kind === 'arrow') { state.draw.cur = arrowPoint(p, e); renderCanvas(); }
+    return;
+  }
+  if (drag.mode === 'pan') { view.x = drag.vx + e.clientX - drag.sx; view.y = drag.vy + e.clientY - drag.sy; renderCanvas(); return; }
+  if (['room','marquee','arrowdraw'].includes(drag.mode) && !state.draw) { drag = null; return; }   // drawing was cancelled mid-drag
+  if (drag.mode === 'room') {
+    const a = state.draw.a; let b = { x:snapv(p.x,e), y:snapv(p.y,e) };
+    if (e.shiftKey) { const s = Math.max(Math.abs(b.x-a.x), Math.abs(b.y-a.y)); b = { x:a.x + Math.sign(b.x-a.x || 1)*s, y:a.y + Math.sign(b.y-a.y || 1)*s }; }
+    state.draw.b = b; renderCanvas(); return;
+  }
+  if (drag.mode === 'marquee') { state.draw.b = p; setMulti([...state.draw.base, ...marqueeHits()]); renderCanvas(); return; }
+  if (drag.mode === 'arrowdraw') { if (Math.hypot(e.clientX-drag.sx, e.clientY-drag.sy) > 6) drag.moved = true; state.draw.cur = arrowPoint(p, e); renderCanvas(); return; }
+  if (!drag.moved) { if (Math.hypot(e.clientX-drag.sx, e.clientY-drag.sy) < 3) return; pushUndo(drag.snap); drag.moved = true; }
+  if (drag.mode === 'gmove') {
+    let d = { x:p.x-drag.p0.x, y:p.y-drag.p0.y }; if (e.shiftKey) d = constrainVec(d);
+    const dx = snapv(d.x, e), dy = snapv(d.y, e);
+    for (const id in drag.orig) { const o = obj(id); if (o) translateFrom(o, drag.orig[id], dx, dy); }
+    renderCanvas(); return;
+  }
+  const o = obj(drag.id); if (!o) return;
+  const tgt = ptPose(o, drag.pt);
+  switch (drag.mode) {
+    case 'move': {
+      let d = { x:p.x-drag.p0.x, y:p.y-drag.p0.y }; if (e.shiftKey) d = constrainVec(d);
+      if (o.type === 'arrow') translateFrom(o, drag.orig, snapv(d.x,e), snapv(d.y,e));
+      else {
+        tgt.x = snapv(drag.start.x + d.x, e); tgt.y = snapv(drag.start.y + d.y, e);
+        if ((o.kind === 'door' || o.kind === 'window') && drag.pt < 0 && !(e.ctrlKey || e.metaKey)) applyWallSnap(o, drag.rot0);
+      }
+      break;
+    }
+    case 'rot': {
+      let a = Math.atan2(p.x-tgt.x, -(p.y-tgt.y))*180/Math.PI;
+      if (e.shiftKey) a = Math.round(a/45)*45; else if (!noSnap(e)) a = Math.round(a/15)*15;
+      tgt.rot = normDeg(Math.round(a)); break;
+    }
+    case 'resize': {
+      const l = toLocalOf(o, p);
+      let w = Math.abs(l.x)*2, h = Math.abs(l.y)*2;
+      if (e.shiftKey && drag.w0 && drag.h0) { const s = Math.max(w/drag.w0, h/drag.h0); o.w = Math.max(6, Math.round(drag.w0*s)); o.h = Math.max(4, Math.round(drag.h0*s)); break; }   // uniform
+      const q = noSnap(e) ? 1 : 5;
+      o.w = Math.max(6, Math.round(w/q)*q); o.h = Math.max(4, Math.round(h/q)*q); break;
+    }
+    case 'v': {
+      const n = o.pts.length, nb = o.pts[drag.vi-1] || (o.closed ? o.pts[n-1] : o.pts[drag.vi+1]);
+      const l = toLocalOf(o, wallSnapPt(p, e, o.id, nb && toWorldOf(o, nb)));
+      o.pts[drag.vi] = { x:Math.round(l.x), y:Math.round(l.y) }; break;
+    }
+    case 'ap': {
+      const nb = o.pts[drag.vi-1] || o.pts[drag.vi+1];
+      const q = e.shiftKey && nb ? constrain45(nb, p, e) : { x:snapv(p.x,e), y:snapv(p.y,e) };
+      o.pts[drag.vi] = q; if (drag.vi === 0) { o.x = q.x; o.y = q.y; } break;
+    }
+  }
+  renderCanvas();
+});
+svg.addEventListener('pointerup', () => {
+  if (drag && ['room','marquee','arrowdraw'].includes(drag.mode) && !state.draw) { drag = null; renderCanvas(); return; }
+  if (drag && drag.mode === 'room') {
+    const { a, b } = state.draw; state.draw = null; drag = null;
+    if (Math.abs(b.x-a.x) < GRID || Math.abs(b.y-a.y) < GRID) { renderCanvas(); return; }
+    createWalls([{x:a.x,y:a.y},{x:b.x,y:a.y},{x:b.x,y:b.y},{x:a.x,y:b.y}], true); return;
+  }
+  if (drag && drag.mode === 'arrowdraw') {   // a drag makes a straight arrow; a click starts point-by-point mode
+    const dragged = drag.moved; drag = null;
+    if (dragged) { state.draw.pts.push(state.draw.cur); finishArrow(); } else renderCanvas();
+    return;
+  }
+  if (drag && drag.mode === 'marquee') { state.draw = null; drag = null; refreshAll(); return; }
+  if (drag && drag.toggleOff && !drag.moved) { setMulti(state.multi.filter(x => x !== drag.toggleOff)); drag = null; refreshAll(); return; }
+  if (drag && drag.moved && drag.mode !== 'pan') { save(); renderInspector(); updatePlaybar(); renderCanvas(); }
+  drag = null;
+});
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = svg.getBoundingClientRect(), cx = e.clientX-r.left, cy = e.clientY-r.top;
+  const trackpadPan = !e.ctrlKey && e.deltaMode === 0 && (Math.abs(e.deltaX) > 0 || Math.abs(e.deltaY) < 40);
+  if (trackpadPan) { view.x -= e.deltaX; view.y -= e.deltaY; renderCanvas(); }
+  else zoomAt(Math.exp(-e.deltaY*(e.ctrlKey ? .01 : .0015)), cx, cy);
+}, { passive:false });
+svg.addEventListener('dblclick', () => {
+  if (state.tool === 'walls') { if (state.draw) finishWalls(false); return; }
+  if (state.tool === 'arrow') { if (state.draw) finishArrow(); return; }
+  const f = $('#inspector [data-k=text]') || $('#inspector [data-k=label]') || $('#inspector [data-k=name]'); if (f) { f.focus(); f.select(); }
+});
+svg.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (state.draw) {
+    if (state.draw.kind === 'walls') finishWalls(false); else if (state.draw.kind === 'arrow') finishArrow(); else { state.draw = null; renderCanvas(); }
+    return;
+  }
+  if (state.tool !== 'select' && state.tool !== 'pan') setTool('select');
+  const p = toWorld(e);
+  const v = e.target.closest('[data-handle="v"]'), o0 = selObj();
+  if (v && o0) {
+    const vi = +v.dataset.vi;
+    return showMenu(e.clientX, e.clientY, [{ header:'Corner' }, { label:'Delete corner', icon:'trash', danger:true, disabled:o0.pts.length <= 2,
+      act:() => { pushUndo(); o0.pts.splice(vi,1); if (o0.pts.length < 3) o0.closed = false; refreshAll(); save(); } }]);
+  }
+  const ap = e.target.closest('[data-handle="ap"]');
+  if (ap && o0) return showMenu(e.clientX, e.clientY, objectMenu(o0, +ap.dataset.vi));
+  const g = e.target.closest('[data-id]');
+  if (g) {
+    const o = obj(g.dataset.id); if (!o) return;
+    if (state.multi.includes(o.id)) return showMenu(e.clientX, e.clientY, multiMenu());
+    const pt = o.type === 'arrow' ? -1 : g.dataset.pt !== undefined ? +g.dataset.pt : (state.sel && state.sel.id === o.id ? state.sel.pt : -1);
+    select(o.id, pt); if (state.shotId && curShot()?.cameraId !== o.id) state.shotId = null;
+    refreshAll();
+    return showMenu(e.clientX, e.clientY, objectMenu(o, pt, o.type === 'arrow' ? p : null));
+  }
+  const l = e.target.closest('[data-lock]');
+  if (l) {
+    const id = l.dataset.lock, other = state.mode === 'block' ? 'set' : 'block';
+    return showMenu(e.clientX, e.clientY, [
+      { header: state.mode === 'block' ? 'Locked · part of the set' : 'Locked · blocking layer' },
+      { label: state.mode === 'block' ? 'Edit set to change this' : 'Switch to blocking to change this', icon:'lock', act:() => { applyMode(other); select(id); refreshAll(); } },
+      '-', ...canvasMenu(p).slice(1) ]);
+  }
+  showMenu(e.clientX, e.clientY, canvasMenu(p));
+});
+
+// ---------- editing actions ----------
+function centerWorld() { return { x:(svg.clientWidth/2-view.x)/view.zoom, y:(svg.clientHeight/2-view.y)/view.zoom }; }
+function deleteSel() {
+  if (state.multi.length) {
+    pushUndo(); const ids = state.multi; scene().objects = scene().objects.filter(x => !ids.includes(x.id)); select(null);
+    refreshAll(); save(); return;
+  }
+  const o = selObj(); if (!o) return;
+  pushUndo();
+  if (state.sel.pt >= 0 && o.type !== 'arrow') { o.path.splice(state.sel.pt, 1); state.sel.pt = Math.min(state.sel.pt, o.path.length-1); }
+  else { scene().objects = scene().objects.filter(x => x !== o); state.sel = null; }
+  refreshAll(); save();
+}
+function duplicateSel() {
+  const ids = selIds(); if (!ids.length) return;
+  pushUndo();
+  const copies = ids.map(id => {
+    const o = obj(id), c = deep(o); c.id = uid(); translateFrom(c, o, GRID*2, GRID*2);
+    if (ids.length === 1 && (o.type === 'actor' || o.type === 'camera')) { const fresh = makeObject(o.type, null, 0, 0); c.name = fresh.name; if (o.type === 'camera') c.color = fresh.color; }
+    scene().objects.push(c); return c.id;
+  });
+  setMulti(copies); refreshAll(); save();
+}
+function selectAll() { setMulti(scene().objects.filter(isLive).map(o => o.id)); refreshAll(); }
+function addMove() {
+  const o = selObj();
+  if (!o || o.type === 'arrow' || o.kind === 'walls') { toast('Select an actor or camera first'); return; }
+  pushUndo();
+  const last = o.path.length ? o.path[o.path.length-1] : o, r = last.rot*Math.PI/180, d = 75;
+  o.path.push({ x:Math.round(last.x+Math.sin(r)*d), y:Math.round(last.y-Math.cos(r)*d), rot:last.rot });
+  state.sel.pt = o.path.length-1; refreshAll(); save();
+}
+function rotateSel(d) { const o = selObj(); if (!o || o.type === 'arrow') return; pushUndo(); const t = ptPose(o, state.sel.pt); t.rot = normDeg(t.rot+d); renderCanvas(); renderInspector(); save(); }
+function nudge(dx, dy) {
+  const ids = selIds(); if (!ids.length) return; pushUndo();
+  if (state.multi.length || selObj().type === 'arrow') ids.forEach(id => { const o = obj(id); translateFrom(o, deep(o), dx, dy); });
+  else { const t = ptPose(selObj(), state.sel.pt); t.x += dx; t.y += dy; }
+  renderCanvas(); renderInspector(); save();
+}
+
+function switchScene(id) {
+  if (id === state.sceneId) return;
+  if (state.sceneId && state.mode === 'set') { const prev = scene(); setTimeout(() => checkLocationEdits(prev), 0); }
+  views[state.sceneId] = { ...view };
+  state.sceneId = id; state.sel = null; state.multi = []; state.playT = null; state.playing = false; state.draw = null;
+  if (!hasSet(scene())) applyMode('set');
+  else if (state.mode === 'set') buildToolbar();
+  if (views[id]) view = { ...views[id] }; else fitView();
+}
+// new scenes ask which saved location to start from
+function addScene() {
+  if (!(project.locations || []).length) return createScene(null);
+  const locs = project.locations.map(l => {
+    const n = project.scenes.filter(s => s.locationId === l.id).length;
+    return `<button class="loc-card" data-loc="${l.id}"><div class="thumb">${locThumb(l)}</div><div class="meta"><b>${esc(l.name)}</b><span>${n ? `used in ${plural(n,'scene')}` : 'not used yet'}</span></div></button>`;
+  }).join('');
+  $('#modalCard').innerHTML = `<div class="ih"><h2>New scene — pick a location</h2><button class="ib" data-close>${ico('x')}</button></div>
+    <div class="loc-grid"><button class="loc-card" data-loc=""><div class="thumb">${ico('plus',22)}</div><div class="meta"><b>Blank set</b><span>Build a new set</span></div></button>${locs}</div>`;
+  $('#modal').classList.add('show');
+  $('#modalCard').querySelectorAll('[data-loc]').forEach(b => b.onclick = () => { $('#modal').classList.remove('show'); createScene(locById(b.dataset.loc)); });
+}
+function createScene(loc) {
+  pushUndo();
+  const s = { id:uid(), name: loc ? `INT. ${loc.name} – DAY` : 'INT. LOCATION – DAY', notes:'', objects:[], shots:[], open:true };
+  if (loc) applyLocation(s, loc);
+  project.scenes.push(s); switchScene(s.id); state.shotId = null; state.sceneSelected = true;
+  if (loc) { applyMode('block'); fitView(); } else view = { x:svg.clientWidth/2, y:svg.clientHeight/2, zoom:1 };
+  refreshAll(); save();
+  setTimeout(()=>{ const f = $('#inspector [data-k=name]'); if (f) { f.focus(); f.select(); } }, 0);
+}
+
+// ---------- locations (saved sets) ----------
+const setObjects = sc => sc.objects.filter(o => layerOf(o) === 'set');
+const setSig = objs => JSON.stringify(objs.map(o => { const c = { ...o }; delete c.id; return c; }));
+const locationName = heading => (heading || '').replace(/^(INT\.?\s*\/\s*EXT\.?|EXT\.?\s*\/\s*INT\.?|I\/E\.?|INT\.?|EXT\.?|EST\.?)\s*/i, '').split(/\s+[-–—]\s+/)[0].trim().toUpperCase();
+function locThumb(l) {
+  const sc = { objects:l.objects, shots:[] }, b = bounds(sc, false);
+  if (!b) return `<span style="color:var(--dim);font-size:12px">Empty</span>`;
+  return `<svg viewBox="${b.x-20} ${b.y-20} ${b.w+40} ${b.h+40}" preserveAspectRatio="xMidYMid meet">${renderLayers({ clean:true, sc, thumb:true })}</svg>`;
+}
+// replace a scene's set with a fresh copy of the location (actors, cameras, arrows stay)
+function applyLocation(sc, loc) {
+  sc.objects = [...deep(loc.objects).map(o => ({ ...o, id:uid() })), ...sc.objects.filter(o => layerOf(o) !== 'set')];
+  sc.locationId = loc.id;
+}
+function scenesUsing(loc, except) { return project.scenes.filter(s => s.locationId === loc.id && s !== except); }
+function saveAsLocation(sc) {
+  if (!setObjects(sc).length) { toast('Build the set first, then save it as a location'); return; }
+  askName('Save set as a location', locationName(sc.name) || 'NEW LOCATION', name => {
+    pushUndo();
+    const loc = { id:uid(), name:name.toUpperCase(), objects:deep(setObjects(sc)) };
+    project.locations.push(loc); sc.locationId = loc.id;
+    buildToolbar(); refreshAll(); save(); toast(`Saved location ${loc.name}`);
+  });
+}
+function loadLocation(sc, loc) {
+  if (setObjects(sc).length && !confirm(`Replace this scene's set with ${loc.name}? Actors, cameras and arrows stay where they are.`)) return;
+  pushUndo(); applyLocation(sc, loc); state.sel = null; state.multi = [];
+  buildToolbar(); fitView(); refreshAll(); save();
+}
+function updateLocation(sc, loc) {
+  loc.objects = deep(setObjects(sc));
+  scenesUsing(loc, sc).forEach(s => applyLocation(s, loc));
+}
+// after editing a linked set, offer to push the change to the location and every scene that uses it
+function checkLocationEdits(sc) {
+  const loc = sc && locById(sc.locationId);
+  if (!loc || setSig(setObjects(sc)) === setSig(loc.objects) || $('#modal').classList.contains('show')) return false;
+  const others = scenesUsing(loc, sc).length;
+  $('#modalCard').innerHTML = `<div class="ih"><h2>Update location ${esc(loc.name)}?</h2><button class="ib" data-close>${ico('x')}</button></div>
+    <p style="color:var(--muted);margin:0 0 16px">You changed the set in scene ${sceneIndex(sc)+1}. ${others ? `${plural(others,'other scene')} also ${others===1?'uses':'use'} this location.` : 'No other scenes use this location yet.'}</p>
+    <div class="btns" style="flex-direction:column;align-items:stretch">
+      <button class="btn primary" data-la="all">${ico('check',14)} Update ${esc(loc.name)}${others ? ` and all ${plural(others,'scene')}` : ''}</button>
+      <button class="btn" data-la="new">${ico('plus',14)} Save as a new location</button>
+      <button class="btn" data-la="one">Keep the change in this scene only</button>
+    </div>`;
+  $('#modal').classList.add('show');
+  $('#modalCard').querySelectorAll('[data-la]').forEach(b => b.onclick = () => {
+    $('#modal').classList.remove('show');
+    if (b.dataset.la === 'all') { pushUndo(); updateLocation(sc, loc); toast(`Updated ${loc.name}${others ? ` in ${plural(others+1,'scene')}` : ''}`); }
+    else if (b.dataset.la === 'new') return saveAsLocation(sc);
+    else { pushUndo(); sc.locationId = null; }
+    buildToolbar(); refreshAll(); save();
+  });
+  return true;
+}
+// small name dialog (window.prompt isn't available in the desktop build)
+function askName(title, value, done) {
+  $('#modalCard').innerHTML = `<div class="ih"><h2>${esc(title)}</h2><button class="ib" data-close>${ico('x')}</button></div>
+    <input type="text" id="askIn" value="${esc(value)}" spellcheck="false">
+    <div class="btns" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="askOk">Save</button></div>`;
+  $('#modal').classList.add('show');
+  const inp = $('#askIn'); inp.focus(); inp.select();
+  const ok = () => { const v = inp.value.trim(); if (!v) return; $('#modal').classList.remove('show'); done(v); };
+  $('#askOk').onclick = ok; inp.onkeydown = e => { if (e.key === 'Enter') ok(); };
+}
+function locationMenu(x, y) {
+  const sc = scene(), loc = locById(sc.locationId), dirty = loc && setSig(setObjects(sc)) !== setSig(loc.objects);
+  const items = [{ header: loc ? `Location · ${loc.name}` : 'Location' }];
+  if (loc) {
+    items.push({ input:loc.name, placeholder:'Location name', onInput:v => { loc.name = v.toUpperCase(); buildToolbar(); renderSidebar(); save(); } });
+    if (dirty) items.push({ label:`Update ${loc.name} everywhere`, icon:'check', act:() => checkLocationEdits(sc) });
+    items.push({ label:'Unlink from location', icon:'x', act:() => { pushUndo(); sc.locationId = null; buildToolbar(); refreshAll(); save(); } });
+  }
+  items.push({ label:'Save set as new location…', icon:'pin', act:() => saveAsLocation(sc) });
+  const others = project.locations.filter(l => l !== loc);
+  if (others.length) items.push('-', { header:'Load a location' }, ...others.map(l => ({ label:l.name, icon:'pin', act:() => loadLocation(sc, l) })));
+  showMenu(x, y, items);
+}
+function addShot(cam) {
+  const sc = scene(); pushUndo();
+  if (!cam) { const o = selObj(); if (o && o.type === 'camera') cam = o; }
+  if (!cam) {
+    const c = centerWorld(), n = sc.objects.filter(o=>o.type==='camera').length;
+    cam = makeObject('camera', null, Math.round((c.x + n*GRID)/GRID)*GRID, Math.round((c.y + 100)/GRID)*GRID);
+    sc.objects.push(cam);
+  }
+  const shot = { id:uid(), cameraId:cam.id, size:'MS', angle:'Eye level', move:'Static', duration:0, desc:'', notes:'', done:false };
+  sc.shots.push(shot); sc.open = true; state.shotId = shot.id; state.sel = null; state.sceneSelected = false;
+  if (state.mode !== 'block') applyMode('block');
+  refreshAll(); save();
+  setTimeout(()=>{ const f = $('#inspector [data-k=desc]'); if (f) f.focus(); }, 0);
+}
+function moveItem(arr, item, d) { const i = arr.indexOf(item), j = i+d; if (j < 0 || j >= arr.length) return false; pushUndo(); arr.splice(i,1); arr.splice(j,0,item); refreshAll(); save(); return true; }
+function duplicateShot(s, sc) { pushUndo(); const c = deep(s); c.id = uid(); c.done = false; sc.shots.splice(sc.shots.indexOf(s)+1, 0, c); switchScene(sc.id); state.shotId = c.id; state.sel = null; refreshAll(); save(); }
+function deleteShot(s, sc) { pushUndo(); sc.shots = sc.shots.filter(x => x !== s); if (state.shotId === s.id) { state.shotId = null; state.sceneSelected = true; } refreshAll(); save(); }
+function duplicateScene(sc) {
+  pushUndo();
+  const c = deep(sc), map = {}; c.id = uid(); c.name += ' (copy)';
+  c.objects.forEach(o => { const n = uid(); map[o.id] = n; o.id = n; });
+  c.shots.forEach(s => { s.id = uid(); s.cameraId = map[s.cameraId] || null; });
+  project.scenes.splice(sceneIndex(sc)+1, 0, c); switchScene(c.id); state.sceneSelected = true; state.shotId = null; refreshAll(); save();
+}
+function deleteScene(sc) {
+  if (project.scenes.length < 2) return;
+  if (!confirm(`Delete scene "${sc.name}" and its ${plural(sc.shots.length,'shot')}?`)) return;
+  pushUndo(); const i = sceneIndex(sc); project.scenes.splice(i,1);
+  state.sceneId = null; switchScene(project.scenes[Math.max(0,i-1)].id); state.shotId = null; fitView(); refreshAll(); save();
+}
+
+// ---------- sidebar ----------
+function renderSidebar() {
+  $('#scenes').innerHTML = project.scenes.map((sc, i) => {
+    const active = sc.id === state.sceneId;
+    const shots = sc.shots.map(s => {
+      const cam = sc.objects.find(o=>o.id===s.cameraId);
+      return `<div class="shot ${s.id===state.shotId?'sel':''}" data-act="shot" data-id="${s.id}" draggable="true">
+        <span class="sn">${shotNum(sc,s)}</span><span class="tag">${esc(s.size)}</span>
+        <span class="sd">${esc(s.desc || `${cam?cam.name:'No camera'} · ${s.move}`)}</span>${s.done?`<span class="done">✓</span>`:''}</div>`;
+    }).join('');
+    return `<div class="scene ${active?'active':''} ${active&&state.sceneSelected?'selected':''} ${sc.open?'open':''}">
+      <div class="scene-head" data-act="scene" data-id="${sc.id}">
+        <span class="caret" data-act="toggle" data-id="${sc.id}">${ico('chev',13)}</span>
+        <span class="snum">${i+1}</span><span class="sname" title="${esc(sc.name)}">${esc(sc.name)}</span>${locById(sc.locationId) ? `<span class="lpin" title="Uses location ${esc(locById(sc.locationId).name)}">${ico('pin',12)}</span>` : ''}<span class="count">${sc.shots.length}</span>
+      </div>
+      ${sc.open ? `<div class="shots">${shots}<button class="addshot" data-act="addshot" data-id="${sc.id}">${ico('plus',13)} Add shot</button></div>` : ''}
+    </div>`;
+  }).join('');
+  const locs = project.locations || [];
+  $('#locs').innerHTML = locs.length ? locs.map(l => `<div class="loc-row" data-loc="${l.id}">${ico('pin',13)}<span class="sname">${esc(l.name)}</span><span class="count">${project.scenes.filter(s => s.locationId === l.id).length}</span></div>`).join('')
+    : `<div class="hint" style="padding:0 10px">Build a set, then use <b>Location → Save set</b> in Set mode to reuse it in other scenes.</div>`;
+}
+function locRowMenu(id, x, y) {
+  const l = locById(id), sc = scene(), n = project.scenes.filter(s => s.locationId === id).length;
+  showMenu(x, y, [
+    { header:`Location · ${plural(n,'scene')}` },
+    { input:l.name, placeholder:'Location name', onInput:v => { l.name = v.toUpperCase(); renderSidebar(); buildToolbar(); save(); } },
+    { label:`Load into scene ${sceneIndex(sc)+1}`, icon:'pin', disabled:sc.locationId === id, act:() => loadLocation(sc, l) },
+    { label:'New scene here', icon:'plus', act:() => createScene(l) },
+    '-',
+    { label:'Delete location', icon:'trash', danger:true, act:() => {
+      if (!confirm(`Delete location ${l.name}? Scenes using it keep their sets.`)) return;
+      pushUndo(); project.locations = project.locations.filter(x => x !== l); project.scenes.forEach(s => { if (s.locationId === id) s.locationId = null; });
+      buildToolbar(); refreshAll(); save(); } },
+  ]);
+}
+$('#locs').addEventListener('click', e => { const r = e.target.closest('.loc-row'); if (r) { const b = r.getBoundingClientRect(); locRowMenu(r.dataset.loc, b.left + 20, b.bottom + 2); } });
+$('#locs').addEventListener('contextmenu', e => { const r = e.target.closest('.loc-row'); if (r) { e.preventDefault(); locRowMenu(r.dataset.loc, e.clientX, e.clientY); } });
+$('#scenes').addEventListener('click', e => {
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  const id = a.dataset.id;
+  if (a.dataset.act === 'toggle') { const s = project.scenes.find(x=>x.id===id); s.open = !s.open; renderSidebar(); save(); }
+  else if (a.dataset.act === 'scene') { switchScene(id); state.shotId = null; state.sel = null; state.sceneSelected = true; refreshAll(); }
+  else if (a.dataset.act === 'shot') selectShot(id);
+  else if (a.dataset.act === 'addshot') { switchScene(id); addShot(); }
+});
+$('#scenes').addEventListener('dblclick', e => { if (e.target.closest('.scene-head')) { const f = $('#inspector [data-k=name]'); if (f) { f.focus(); f.select(); } } });
+$('#scenes').addEventListener('contextmenu', e => {
+  const shotEl = e.target.closest('.shot'), headEl = e.target.closest('.scene-head');
+  if (!shotEl && !headEl) return;
+  e.preventDefault();
+  if (shotEl) {
+    selectShot(shotEl.dataset.id);
+    const [s, sc] = shotById(shotEl.dataset.id), set = fn => () => { pushUndo(); fn(); refreshAll(); save(); };
+    return showMenu(e.clientX, e.clientY, [
+      { header:`Shot ${shotNum(sc,s)}` },
+      { input:s.desc, placeholder:'Description', onInput:v => { s.desc = v; renderSidebar(); renderBanner(); renderInspector(); save(); } },
+      { label:'Size', chips:['WS','FS','MS','MCU','CU','OTS'].map(z => ({ label:z, on:s.size === z, act:set(() => s.size = z) })) },
+      { label: s.done ? 'Mark not done' : 'Mark done', icon:'check', act:set(() => s.done = !s.done) },
+      '-',
+      { label:'Move up', icon:'up', disabled:sc.shots.indexOf(s) === 0, act:() => moveItem(sc.shots, s, -1) },
+      { label:'Move down', icon:'down', disabled:sc.shots.indexOf(s) === sc.shots.length-1, act:() => moveItem(sc.shots, s, 1) },
+      { label:'Duplicate', icon:'copy', act:() => duplicateShot(s, sc) },
+      { label:'Delete shot', icon:'trash', danger:true, act:() => deleteShot(s, sc) },
+    ]);
+  }
+  const sc = project.scenes.find(x => x.id === headEl.dataset.id);
+  switchScene(sc.id); state.shotId = null; state.sceneSelected = true; refreshAll();
+  showMenu(e.clientX, e.clientY, [
+    { header:`Scene ${sceneIndex(sc)+1}` },
+    { input:sc.name, placeholder:'Scene heading', onInput:v => { sc.name = v; renderSidebar(); renderInspector(); save(); } },
+    { label:'Add shot', icon:'plus', act:() => addShot() },
+    { label:'Import script…', icon:'script', act:openImport },
+    '-',
+    { label:'Move up', icon:'up', disabled:sceneIndex(sc) === 0, act:() => moveItem(project.scenes, sc, -1) },
+    { label:'Move down', icon:'down', disabled:sceneIndex(sc) === project.scenes.length-1, act:() => moveItem(project.scenes, sc, 1) },
+    { label:'Duplicate scene', icon:'copy', act:() => duplicateScene(sc) },
+    { label:'Delete scene', icon:'trash', danger:true, disabled:project.scenes.length < 2, act:() => deleteScene(sc) },
+  ]);
+});
+function selectShot(id) {
+  const [s, sc] = shotById(id); if (!s) return;
+  switchScene(sc.id); state.shotId = id; state.sel = null; state.sceneSelected = false; refreshAll();
+}
+// drag to reorder shots
+let dragShot = null;
+$('#scenes').addEventListener('dragstart', e => { const r = e.target.closest('.shot'); if (r) { dragShot = r.dataset.id; e.dataTransfer.effectAllowed = 'move'; } });
+$('#scenes').addEventListener('dragover', e => {
+  const r = e.target.closest('.shot, .addshot'); if (!dragShot || !r) return;
+  e.preventDefault(); document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop')); r.classList.add('drop');
+});
+$('#scenes').addEventListener('drop', e => {
+  e.preventDefault(); const r = e.target.closest('.shot, .addshot'); if (!dragShot || !r) return;
+  const [s, from] = shotById(dragShot);
+  const [target, to] = r.classList.contains('shot') ? shotById(r.dataset.id) : [null, project.scenes.find(x=>x.id===r.dataset.id)];
+  if (!s || target === s) return;
+  if (from !== to) { toast('Shots stay in their own scene — their camera lives on that set'); return; }
+  pushUndo(); from.shots.splice(from.shots.indexOf(s),1);
+  to.shots.splice(target ? to.shots.indexOf(target) : to.shots.length, 0, s);
+  refreshAll(); save();
+});
+$('#scenes').addEventListener('dragend', () => { dragShot = null; document.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop')); });
+
+// ---------- inspector ----------
+const fld = (lbl, inner) => `<label class="f"><span>${lbl}</span>${inner}</label>`;
+const tin = (k, v, ph='') => `<input type="text" data-k="${k}" value="${esc(v)}" placeholder="${esc(ph)}" spellcheck="false">`;
+const nin = (k, v, unit='', attrs='') => `<div class="unit"><input type="number" data-k="${k}" data-num value="${rnd(v)}" ${attrs}>${unit?`<i>${unit}</i>`:''}</div>`;
+const sin = (k, v, opts) => `<select data-k="${k}">${opts.map(o => { const [val,lbl] = Array.isArray(o) ? o : [o,o]; return `<option value="${esc(val)}" ${val==v?'selected':''}>${esc(lbl)}</option>`; }).join('')}</select>`;
+const btn = (act, inner, cls='', data='') => `<button class="btn ${cls}" data-act="${act}" ${data}>${inner}</button>`;
+
+function inspectorTarget() {
+  if (state.multi.length) return ['multi', state.multi];
+  const o = selObj(); if (o) return ['obj', o];
+  const s = curShot(); if (s) return ['shot', s];
+  return ['scene', scene()];
+}
+function renderInspector() {
+  if (!project) return;
+  const [kind, t] = inspectorTarget(), sc = scene();
+  let h = '';
+  if (kind === 'multi') {
+    const counts = {};
+    t.forEach(id => { const o = obj(id); const k = o.type === 'prop' ? PROPS[o.kind].label : o.type === 'arrow' ? 'Arrow' : o.type[0].toUpperCase() + o.type.slice(1); counts[k] = (counts[k]||0) + 1; });
+    h += `<div class="ih"><span class="kind">Selection</span><h2>${plural(t.length,'object')}</h2></div>
+      <div class="sec">${Object.entries(counts).map(([k,n]) => `<div class="stat">${esc(k)} <b>${n}</b></div>`).join('')}</div>
+      <div class="sec"><div class="btns">${btn('dup-obj', ico('copy',14)+' Duplicate all')}${btn('del-obj', ico('trash',14)+' Delete all', 'danger')}</div>
+      <div class="hint">Drag any selected object to move them together (<kbd>Shift</kbd> keeps it straight). Arrow keys nudge. <kbd>Shift</kbd>-click adds or removes one.</div></div>`;
+  } else if (kind === 'obj') {
+    const pt = state.sel.pt, p = ptPose(t, pt), typeLbl = t.type === 'prop' ? PROPS[t.kind].label : t.type;
+    const isSetLayer = layerOf(t) === 'set';
+    h += `<div class="ih"><span class="kind ${isSetLayer?'set':''}">${esc(typeLbl)}</span><h2>${esc(t.kind==='text'?t.text:t.type==='arrow'?(t.label||'Arrow'):t.name)}</h2></div>`;
+    if (t.kind === 'text') h += fld('Text', tin('text', t.text)) + fld('Size', nin('size', t.size, 'px', 'min="6" max="200"'));
+    else if (t.type === 'arrow') h += fld('Label', tin('label', t.label, 'Optional, e.g. "CAR PULLS IN"'));
+    else h += fld('Name', tin('name', t.name));
+    const palette = t.type === 'prop' ? PROP_COLORS : COLORS;
+    h += fld('Color', `<div class="swatches">${[t.color, ...palette].filter((c,i,a)=>a.indexOf(c)===i).map(c=>`<button class="sw ${c===t.color?'on':''}" style="background:${c}" data-act="color" data-c="${c}"></button>`).join('')}</div>`);
+    if (t.type === 'arrow') {
+      h += `<div class="sec"><div class="st">Style</div><div class="row3">${fld('Line', sin('style', t.style, [['solid','Solid'],['dashed','Dashed']]))}${fld('Heads', sin('head', t.head, [['end','End'],['both','Both'],['none','None']]))}${fld('Width', nin('width', t.width, '', 'min="1" max="12"'))}</div>
+        <label class="check" style="margin-bottom:8px"><input type="checkbox" data-k="smooth" ${t.smooth?'checked':''}> Smooth curve through points</label>
+        <div class="hint">${plural(t.pts.length,'point')}. Drag a point to move it, drag a <b>+</b> to add a point (e.g. to walk around a table), right-click a point to delete it. <kbd>Shift</kbd> keeps a segment at 45°.</div></div>`;
+    } else {
+      h += `<div class="sec"><div class="st">${pt >= 0 ? `Mark ${pt+2}` : (t.path.length ? 'Mark 1 (start)' : 'Placement')}</div>
+        <div class="row3">${fld('X', nin('xm', p.x/M, 'm', 'step="0.25"'))}${fld('Y', nin('ym', p.y/M, 'm', 'step="0.25"'))}${fld(t.type==='prop'?'Rotation':'Facing', nin('rot', p.rot, '°', 'step="15"'))}</div>`;
+      if (t.type === 'prop' && !['text','light','walls'].includes(t.kind) && pt < 0) h += `<div class="row">${fld('Width', nin('wm', t.w/M, 'm', 'step="0.1" min="0.1"'))}${fld('Depth', nin('hm', t.h/M, 'm', 'step="0.1" min="0.05"'))}</div>`;
+      h += `</div>`;
+    }
+    if (t.kind === 'walls') {
+      const n = t.pts.length; let len = 0;
+      for (let i = 0; i < n - (t.closed ? 0 : 1); i++) { const a = t.pts[i], b = t.pts[(i+1)%n]; len += Math.hypot(b.x-a.x, b.y-a.y); }
+      h += `<div class="sec"><div class="st">Walls</div><div class="row">${fld('Thickness', nin('thickcm', t.thick*2, 'cm', 'min="2" max="100" step="5"'))}${fld('Length', `<div class="unit"><input type="text" value="${(len/M).toFixed(2)}" disabled><i>m</i></div>`)}</div>
+        ${n >= 3 ? `<label class="check" style="margin-bottom:8px"><input type="checkbox" data-k="closed" ${t.closed?'checked':''}> Closed shape</label>` : ''}
+        <div class="hint">${plural(n,'corner')}. Drag a blue corner to reshape, drag a <b>+</b> to add a corner, right-click a corner to delete it.</div></div>`;
+    }
+    if (t.kind === 'door' || t.kind === 'window') h += `<div class="sec"><div class="st">${PROPS[t.kind].label}</div><div class="btns">${btn('flip-side', ico('flip',14)+' Flip side')}${t.kind==='door'?btn('flip-hinge', ico('flip',14)+' Flip hinge'):''}</div><div class="hint">Drag near a wall and it snaps into place. Hold <kbd>Shift</kbd> to place freely.</div></div>`;
+    if (t.type === 'camera') {
+      const shots = sc.shots.filter(s=>s.cameraId===t.id);
+      h += `<div class="sec"><div class="st">Lens</div><div class="chips">${LENSES.map(l=>`<button class="chip ${t.lens===l?'on':''}" data-act="lens" data-l="${l}">${l}</button>`).join('')}</div>
+        <div class="row">${fld('Focal length', nin('lens', t.lens, 'mm', 'min="8" max="600"'))}${fld('Cone length', nin('range', t.range, 'm', 'min="1" max="60" step="0.5"'))}</div>
+        <div class="hint">Horizontal FOV ≈ ${fovOf(t.lens).toFixed(0)}° (full-frame)</div></div>
+        <div class="sec"><div class="st">Shots from this camera</div>
+        <div class="chips">${shots.map(s=>`<button class="chip" data-act="goto-shot" data-id="${s.id}">${shotNum(sc,s)}</button>`).join('') || '<span class="hint" style="margin:0">None yet</span>'}</div>
+        ${btn('shot-from-cam', ico('plus',14)+' New shot from this camera', 'primary')}</div>`;
+    }
+    if (t.kind === 'light') h += `<div class="sec"><div class="st">Beam</div><div class="row">${fld('Spread', nin('spread', t.spread, '°', 'min="5" max="180" step="5"'))}${fld('Throw', nin('range', t.range, 'm', 'min="0.5" max="40" step="0.5"'))}</div></div>`;
+    if (t.type !== 'arrow' && t.kind !== 'walls') {
+      h += `<div class="sec"><div class="st">Movement <span>${t.path.length ? `${t.path.length+1} marks` : ''}</span></div>`;
+      if (t.path.length) h += `<div class="chips">${poses(t).map((_,i)=>`<button class="chip ${pt===i-1?'on':''}" data-act="sel-pt" data-pt="${i-1}">${i+1}</button>`).join('')}</div>`;
+      h += `<div class="btns">${btn('add-move', ico('plus',14)+' Add move')}${pt >= 0 ? btn('del-pt', 'Remove mark '+(pt+2)) : ''}${t.path.length ? btn('clear-moves','Clear', 'danger') : ''}</div>
+        <div class="hint">Press <kbd>M</kbd> to add a mark, or <kbd>Alt</kbd>-drag on the canvas to drop one where you want it. Press <kbd>P</kbd> to play.</div></div>`;
+    }
+    h += `<div class="sec"><div class="btns">${btn('dup-obj', ico('copy',14)+' Duplicate')}${btn('del-obj', ico('trash',14)+' Delete', 'danger')}</div><div class="hint">Right-click anything on the canvas for quick actions.</div></div>`;
+  } else if (kind === 'shot') {
+    const cam = sc.objects.find(o=>o.id===t.cameraId), cams = sc.objects.filter(o=>o.type==='camera');
+    h += `<div class="ih"><span class="kind">Shot</span><h2>${shotNum(sc,t)}</h2><label class="check"><input type="checkbox" data-k="done" ${t.done?'checked':''}> Done</label></div>`;
+    h += fld('Description', `<textarea data-k="desc" placeholder="What happens in this shot?">${esc(t.desc)}</textarea>`);
+    h += `<div class="row">${fld('Shot size', sin('size', t.size, SIZES))}${fld('Angle', sin('angle', t.angle, ANGLES))}</div>`;
+    h += `<div class="row">${fld('Movement', sin('move', t.move, MOVES))}${fld('Duration', nin('duration', t.duration, 's', 'min="0" step="1"'))}</div>`;
+    h += `<div class="sec"><div class="st">Camera</div><div class="row">${fld('Camera', sin('cameraId', t.cameraId||'', [['','— none —'], ...cams.map(c=>[c.id,c.name])]))}${cam ? fld('Lens', nin('lens', cam.lens, 'mm', 'min="8" max="600"')) : ''}</div>
+      ${cam ? `<div class="btns">${btn('sel-cam', 'Select camera on set')}</div><div class="hint">${cam.path.length ? `Camera has ${cam.path.length+1} marks — press <kbd>P</kbd> to preview the move.` : 'Select the camera and press <kbd>M</kbd> to add a camera move.'}</div>` : ''}</div>`;
+    h += `<div class="sec">${fld('Notes', `<textarea data-k="notes" placeholder="Gear, lighting, performance notes…">${esc(t.notes)}</textarea>`)}</div>`;
+    h += `<div class="sec"><div class="st">This shot</div><div class="btns">${btn('shot-up', ico('up',14), '', 'data-tip="Move shot earlier"')}${btn('shot-down', ico('down',14), '', 'data-tip="Move shot later"')}${btn('dup-shot', ico('copy',14)+' Duplicate', '', 'data-tip="Copy this shot"')}${btn('del-shot', ico('trash',14)+' Delete', 'danger', 'data-tip="Delete this shot"')}</div></div>`;
+  } else {
+    const total = t.shots.reduce((a,s)=>a+(+s.duration||0),0), done = t.shots.filter(s=>s.done).length;
+    h += `<div class="ih"><span class="kind">Scene ${sceneIndex(t)+1}</span><h2></h2></div>`;
+    h += fld('Scene heading', tin('name', t.name, 'INT. LOCATION – DAY'));
+    h += fld('Notes', `<textarea data-k="notes" placeholder="Synopsis, blocking ideas…">${esc(t.notes)}</textarea>`);
+    const loc = locById(t.locationId), dirty = loc && setSig(setObjects(t)) !== setSig(loc.objects);
+    h += `<div class="sec"><div class="st">Location</div>
+      ${fld('Set', sin('locationId', t.locationId || '', [['', loc ? '— unlink —' : '— own set —'], ...project.locations.map(l => [l.id, l.name])]))}
+      ${loc ? `<div class="hint">${dirty ? `<b style="color:var(--set)">Edited</b> — this set differs from ${esc(loc.name)}.` : `Matches ${esc(loc.name)}.`} Used in ${plural(project.scenes.filter(s => s.locationId === loc.id).length,'scene')}.</div>` : ''}
+      <div class="btns">${dirty ? btn('loc-update', ico('check',14)+' Update location') : ''}${btn('loc-save', ico('pin',14)+' Save set as location')}</div></div>`;
+    h += `<div class="sec"><div class="st">Overview</div>
+      <div class="stat">Shots <b>${t.shots.length}</b></div><div class="stat">Done <b>${done} / ${t.shots.length}</b></div>
+      <div class="stat">Est. screen time <b>${fmtDur(total)}</b></div><div class="stat">Actors <b>${t.objects.filter(o=>o.type==='actor').length}</b></div>
+      <div class="stat">Cameras <b>${t.objects.filter(o=>o.type==='camera').length}</b></div></div>`;
+    h += `<div class="sec"><div class="btns">${btn('add-shot', ico('plus',14)+' Add shot', 'primary')}${btn('import', ico('script',14)+' Import script')}</div></div>`;
+    h += `<div class="sec"><div class="st">This scene</div><div class="btns">${btn('scene-up', ico('up',14), '', 'data-tip="Move scene earlier"')}${btn('scene-down', ico('down',14), '', 'data-tip="Move scene later"')}${btn('dup-scene', ico('copy',14)+' Duplicate', '', 'data-tip="Copy scene with its set and shots"')}${project.scenes.length > 1 ? btn('del-scene', ico('trash',14)+' Delete', 'danger', 'data-tip="Delete scene and its shots"') : ''}</div></div>`;
+    h += `<div class="sec"><div class="hint"><b style="color:var(--set)">Set</b> mode builds the room — walls, doors, furniture. <b style="color:var(--accent)">Blocking</b> mode locks the set so you can place actors, cameras and arrows without bumping it. Press <kbd>E</kbd> to switch.<br><br>Press <kbd>?</kbd> for shortcuts.</div></div>`;
+  }
+  $('#inspector').innerHTML = h;
+}
+const insp = $('#inspector');
+insp.addEventListener('focusin', e => { if (e.target.dataset.k) pendingSnap = snapshot(); });
+insp.addEventListener('input', e => { if (e.target.dataset.k && e.target.type !== 'checkbox' && e.target.tagName !== 'SELECT') applyField(e.target); });
+insp.addEventListener('change', e => { if (e.target.dataset.k && (e.target.type === 'checkbox' || e.target.tagName === 'SELECT')) { applyField(e.target); renderInspector(); } });
+function applyField(el) {
+  const k = el.dataset.k;
+  let v = el.type === 'checkbox' ? el.checked : el.dataset.num !== undefined ? parseFloat(el.value) : el.value;
+  if (el.dataset.num !== undefined && !isFinite(v)) return;
+  const [kind, t] = inspectorTarget();
+  if (kind === 'scene' && k === 'locationId') {   // picking a location loads its set
+    pendingSnap = null;
+    if (v) loadLocation(t, locById(v)); else { pushUndo(); t.locationId = null; buildToolbar(); refreshAll(); save(); }
+    return;
+  }
+  if (pendingSnap) { pushUndo(pendingSnap); pendingSnap = null; }
+  if (kind === 'obj') {
+    const p = ptPose(t, state.sel.pt);
+    if (k === 'xm') p.x = v*M; else if (k === 'ym') p.y = v*M; else if (k === 'rot') p.rot = normDeg(v);
+    else if (k === 'wm') t.w = Math.max(.05,v)*M; else if (k === 'hm') t.h = Math.max(.05,v)*M;
+    else if (k === 'thickcm') t.thick = Math.max(1, v/2);
+    else t[k] = v;
+    if (['name','text','label'].includes(k)) { const h2 = insp.querySelector('h2'); if (h2) h2.textContent = v; }
+  } else if (kind === 'shot') {
+    if (k === 'lens') { const cam = obj(t.cameraId); if (cam) cam.lens = v; }
+    else t[k] = v;
+  } else t[k] = v;
+  renderCanvas(); renderSidebar(); renderBanner(); updatePlaybar(); save();
+}
+insp.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const [kind, t] = inspectorTarget(), sc = scene();
+  const set = fn => { pushUndo(); fn(); refreshAll(); save(); };
+  switch (b.dataset.act) {
+    case 'color': set(() => t.color = b.dataset.c); break;
+    case 'lens': set(() => t.lens = +b.dataset.l); break;
+    case 'add-move': addMove(); break;
+    case 'sel-pt': state.sel.pt = +b.dataset.pt; renderInspector(); renderCanvas(); break;
+    case 'del-pt': deleteSel(); break;
+    case 'clear-moves': set(() => { t.path = []; state.sel.pt = -1; }); break;
+    case 'loc-save': saveAsLocation(t); break;
+    case 'loc-update': checkLocationEdits(t); break;
+    case 'flip-side': set(() => t.rot = normDeg(t.rot + 180)); break;
+    case 'flip-hinge': set(() => t.mirror = !t.mirror); break;
+    case 'dup-obj': duplicateSel(); break;
+    case 'del-obj': if (state.sel) state.sel.pt = -1; deleteSel(); break;
+    case 'shot-from-cam': addShot(t); break;
+    case 'goto-shot': selectShot(b.dataset.id); break;
+    case 'sel-cam': select(t.cameraId); refreshAll(); break;
+    case 'shot-up': moveItem(sc.shots, t, -1); break;
+    case 'shot-down': moveItem(sc.shots, t, 1); break;
+    case 'dup-shot': duplicateShot(t, sc); break;
+    case 'del-shot': deleteShot(t, sc); break;
+    case 'add-shot': addShot(); break;
+    case 'import': openImport(); break;
+    case 'scene-up': moveItem(project.scenes, t, -1); break;
+    case 'scene-down': moveItem(project.scenes, t, 1); break;
+    case 'dup-scene': duplicateScene(t); break;
+    case 'del-scene': deleteScene(t); break;
+  }
+  updateHeader();
+});
+
+// ---------- banner (selected shot) ----------
+function renderBanner() {
+  const s = curShot(), b = $('#banner');
+  if (!s) { b.classList.remove('show'); return; }
+  const sc = scene(), cam = sc.objects.find(o=>o.id===s.cameraId);
+  b.innerHTML = `<div class="bn">${shotNum(sc,s)}</div><div class="bm"><span class="tag">${esc(s.size)}</span><span class="tag">${esc(s.angle)}</span><span class="tag">${esc(s.move)}</span>${cam?`<span class="tag" style="color:${cam.color}">${esc(cam.name)} · ${cam.lens}mm</span>`:''}${s.duration?`<span class="tag">${fmtDur(s.duration)}</span>`:''}</div>${s.desc?`<div class="bd">${esc(s.desc)}</div>`:''}`;
+  b.classList.add('show');
+}
+
+// ---------- shot list ----------
+function renderShotlist() {
+  const total = project.scenes.reduce((a,sc)=>a+sc.shots.length,0);
+  let rows = '';
+  project.scenes.forEach((sc, i) => {
+    const dur = sc.shots.reduce((a,s)=>a+(+s.duration||0),0);
+    rows += `<tr class="srow"><td colspan="9">${i+1} · ${esc(sc.name)}<span>${plural(sc.shots.length,'shot')} · ${fmtDur(dur)}</span></td></tr>`;
+    for (const s of sc.shots) {
+      const cam = sc.objects.find(o=>o.id===s.cameraId);
+      rows += `<tr class="shrow ${s.done?'isdone':''}" data-id="${s.id}"><td><b>${shotNum(sc,s)}</b></td><td>${esc(s.size)}</td><td>${esc(s.angle)}</td><td>${esc(s.move)}</td>
+        <td>${cam?cam.lens+'mm':'—'}</td><td>${cam?esc(cam.name):'—'}</td><td class="desc">${esc(s.desc)}${s.notes?`<br><small style="color:var(--dim)">${esc(s.notes)}</small>`:''}</td>
+        <td>${s.duration?fmtDur(s.duration):''}</td><td><input type="checkbox" class="dn" data-id="${s.id}" ${s.done?'checked':''} style="accent-color:var(--ok)"></td></tr>`;
+    }
+  });
+  $('#shotlist').innerHTML = `<div class="sl-head"><h1>${esc(project.name)} — Shot list</h1><span style="color:var(--muted)">${plural(total,'shot')}</span>
+    <button class="btn" id="slCsv">${ico('csv',14)} Export CSV</button><button class="btn" id="slPrint">${ico('print',14)} Print / PDF</button></div>
+    <table><thead><tr><th>Shot</th><th>Size</th><th>Angle</th><th>Move</th><th>Lens</th><th>Camera</th><th>Description</th><th>Dur</th><th>Done</th></tr></thead><tbody>${rows}</tbody></table>`;
+  $('#slCsv').onclick = exportCSV; $('#slPrint').onclick = () => window.print();
+}
+$('#shotlist').addEventListener('click', e => {
+  if (e.target.classList.contains('dn')) { const [s] = shotById(e.target.dataset.id); pushUndo(); s.done = e.target.checked; save(); renderShotlist(); renderSidebar(); return; }
+  const r = e.target.closest('.shrow'); if (r) { setView('diagram'); selectShot(r.dataset.id); }
+});
+function exportCSV() {
+  const q = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
+  const lines = [['Scene','Shot','Size','Angle','Movement','Lens (mm)','Camera','Description','Notes','Duration (s)','Done'].map(q).join(',')];
+  project.scenes.forEach(sc => sc.shots.forEach(s => { const cam = sc.objects.find(o=>o.id===s.cameraId);
+    lines.push([sc.name, shotNum(sc,s), s.size, s.angle, s.move, cam?cam.lens:'', cam?cam.name:'', s.desc, s.notes, s.duration||'', s.done?'yes':''].map(q).join(',')); }));
+  download(`${safeName()} shot list.csv`, new Blob([lines.join('\r\n')], {type:'text/csv'})); toast('Shot list exported');
+}
+
+// ---------- PNG export ----------
+async function exportPNG() {
+  const sc = scene(), b = bounds(sc, state.showCones);
+  if (!b) { toast('Nothing to export yet'); return; }
+  const pad = 50, top = 40, w = b.w+pad*2, h = b.h+pad*2+top, x = b.x-pad, y = b.y-pad-top, S = 2;
+  const str = `<svg xmlns="http://www.w3.org/2000/svg" width="${w*S}" height="${h*S}" viewBox="${x} ${y} ${w} ${h}"><defs>${gridDefs(1)}</defs>
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${BG}"/><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#grid)"/>
+    <text x="${x+20}" y="${y+30}" font-family="Inter,Segoe UI,sans-serif" font-size="15" font-weight="700" fill="#e7e9ee">${sceneIndex(sc)+1} · ${esc(sc.name)}</text>
+    ${renderLayers({ clean:true })}</svg>`;
+  const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(str);
+  try { await img.decode(); } catch (e) { toast('Export failed'); return; }
+  const c = document.createElement('canvas'); c.width = w*S; c.height = h*S; c.getContext('2d').drawImage(img, 0, 0);
+  c.toBlob(bl => { download(`${safeName()} - scene ${sceneIndex(sc)+1}.png`, bl); toast('Diagram exported'); });
+}
+
+// ---------- script import ----------
+const HEADING = /^(?:\d+[A-Z]?[.)]?\s+)?((?:INT\.?\s*\/\s*EXT|EXT\.?\s*\/\s*INT|I\/E|INT|EXT|EST)[.\s].*?)(?:\s+\d+[A-Z]?\.?)?$/i;
+const NOT_CHAR = /^(FADE|CUT|DISSOLVE|SMASH|MATCH|THE END|CONTINUED|MORE|BACK TO|INTERCUT|TITLE|SUPER|END|SCENE|OMITTED|ANGLE|CLOSE|WIDE|POV|INSERT)\b|TO:$/;
+function cleanChar(t) { return t.replace(/^@/,'').replace(/\s*\(.*?\)\s*/g,' ').replace(/\^$/,'').replace(/\s+/g,' ').trim(); }
+function parseScript(text) {
+  if (/<FinalDraft/i.test(text)) return parseFDX(text);
+  const lines = text.replace(/\r/g,'').split('\n'), scenes = [];
+  let cur = null;
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i], t = raw.trim();
+    if (!t) continue;
+    let heading = null;
+    if (/^\.[A-Za-z0-9]/.test(t) && !t.startsWith('..')) heading = t.slice(1);
+    else { const m = t.match(HEADING); if (m && (t === t.toUpperCase() || /^(int|ext|est|i\/e)\./i.test(m[1]))) heading = m[1]; }
+    if (heading) {
+      cur = { heading:heading.replace(/\s*#[^#]*#\s*$/,'').replace(/\s+/g,' ').trim().toUpperCase(), chars:[], summary:'' };
+      scenes.push(cur); continue;
+    }
+    if (!cur) continue;
+    const prevBlank = i === 0 || !lines[i-1].trim(), next = (lines[i+1] || '').trim();
+    const looksChar = t.startsWith('@') || (t === t.toUpperCase() && /[A-Z]/.test(t) && t.length <= 38 && !/^[(\[!]/.test(t) && !/[.!?:]$/.test(t.replace(/\(.*?\)/g,'').trim()) && !NOT_CHAR.test(t));
+    if (looksChar && next && (prevBlank || /^\s{10,}/.test(raw))) {
+      const name = cleanChar(t);
+      if (name && !cur.chars.includes(name)) cur.chars.push(name);
+      while (i+1 < lines.length && lines[i+1].trim()) i++;   // skip the dialogue block
+      continue;
+    }
+    if (!cur.summary && !/^[(\[]/.test(t) && !NOT_CHAR.test(t) && !/^[>=#~]/.test(t)) cur.summary = t.slice(0, 240);
+  }
+  return scenes;
+}
+function parseFDX(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml'), scenes = [];
+  let cur = null;
+  for (const p of doc.querySelectorAll('Content > Paragraph')) {
+    const type = p.getAttribute('Type'), text = [...p.querySelectorAll('Text')].map(t => t.textContent).join('').trim();
+    if (!text) continue;
+    if (type === 'Scene Heading') { cur = { heading:text.toUpperCase(), chars:[], summary:'' }; scenes.push(cur); }
+    else if (cur && type === 'Character') { const n = cleanChar(text.toUpperCase()); if (n && !cur.chars.includes(n)) cur.chars.push(n); }
+    else if (cur && type === 'Action' && !cur.summary) cur.summary = text.slice(0, 240);
+  }
+  return scenes;
+}
+let imp = null;
+function openImport() {
+  hideMenu();
+  const emptyish = project.scenes.every(s => !s.objects.length && !s.shots.length);
+  imp = { scenes:[], replace:emptyish, actors:true };
+  $('#modalCard').innerHTML = `<div class="ih"><h2>Import script</h2><button class="ib" data-close>${ico('x')}</button></div>
+    <div class="dz" id="dz">Drop a screenplay here or <button class="btn sm" id="impPick">Choose file…</button>
+      <div class="hint" style="margin:6px 0 0">Fountain (.fountain), Final Draft (.fdx) or plain text. For a PDF, copy the text out of it and paste below.</div></div>
+    <textarea id="impText" placeholder="…or paste screenplay text here" style="min-height:110px;font:12px/1.5 ui-monospace,monospace"></textarea>
+    <div id="impResult"></div>`;
+  $('#modal').classList.add('show');
+  $('#impPick').onclick = () => { $('#scriptIn').value = ''; $('#scriptIn').click(); };
+  const dz = $('#dz');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) loadScriptFile(f); });
+  let tm; $('#impText').addEventListener('input', e => { clearTimeout(tm); tm = setTimeout(() => showImport(parseScript(e.target.value)), 200); });
+  showImport([]);
+}
+$('#scriptIn').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadScriptFile(f); });
+async function loadScriptFile(f) {
+  if (/\.pdf$/i.test(f.name)) { toast('PDF import is coming. For now, copy the text out of the PDF and paste it here.'); return; }
+  const text = await f.text();
+  if (!/<FinalDraft/i.test(text)) $('#impText').value = text;
+  else $('#impText').value = '', $('#impText').placeholder = `Loaded ${f.name}`;
+  showImport(parseScript(text), f.name);
+}
+function showImport(scenes, fname) {
+  imp.scenes = scenes.map(s => ({ ...s, on:true }));
+  const r = $('#impResult');
+  if (!scenes.length) { r.innerHTML = `<div class="hint">${fname ? `No scene headings found in ${esc(fname)}. ` : ''}Scenes are detected from headings like <kbd>INT. KITCHEN – NIGHT</kbd> or <kbd>EXT. STREET – DAY</kbd>.</div>`; return; }
+  const chars = new Set(scenes.flatMap(s => s.chars));
+  r.innerHTML = `<div class="st" style="margin-top:14px">Found ${plural(scenes.length,'scene')} · ${plural(chars.size,'character')}</div>
+    <div class="imp-list">${imp.scenes.map((s,i) => `<label class="imp-row"><input type="checkbox" data-si="${i}" checked><div><div class="h">${i+1}. ${esc(s.heading)}</div>${s.chars.length?`<div class="c">${esc(s.chars.join(', '))}</div>`:''}</div></label>`).join('')}</div>
+    <label class="check"><input type="checkbox" id="impActors" ${imp.actors?'checked':''}> Place each scene's characters as actors</label>
+    <label class="check" style="margin-top:6px"><input type="checkbox" id="impReplace" ${imp.replace?'checked':''}> Replace existing scenes (otherwise add after them)</label>
+    <div class="btns" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="impGo"></button></div>`;
+  const count = () => { const n = imp.scenes.filter(s => s.on).length; $('#impGo').textContent = `Import ${plural(n,'scene')}`; $('#impGo').disabled = !n; };
+  r.querySelectorAll('[data-si]').forEach(c => c.onchange = () => { imp.scenes[+c.dataset.si].on = c.checked; count(); });
+  $('#impActors').onchange = e => imp.actors = e.target.checked;
+  $('#impReplace').onchange = e => imp.replace = e.target.checked;
+  $('#impGo').onclick = applyImport;
+  count();
+}
+function applyImport() {
+  const chosen = imp.scenes.filter(s => s.on); if (!chosen.length) return;
+  pushUndo();
+  const colorOf = {}; let ci = 0;
+  const made = chosen.map(s => {
+    const sc = { id:uid(), name:s.heading, notes:s.summary, objects:[], shots:[], open:false };
+    const loc = project.locations.find(l => l.name === locationName(s.heading));   // reuse a saved set with the same name
+    if (loc) applyLocation(sc, loc);
+    if (imp.actors) s.chars.forEach((n, i) => {
+      if (!colorOf[n]) colorOf[n] = COLORS[ci++ % COLORS.length];
+      sc.objects.push({ id:uid(), type:'actor', layer:'block', name:n, color:colorOf[n], x:Math.round((i-(s.chars.length-1)/2)*75), y:0, rot:180, path:[] });
+    });
+    return sc;
+  });
+  if (imp.replace) project.scenes = made; else project.scenes.push(...made);
+  made[0].open = true;
+  state.sceneId = null; state.shotId = null; state.sel = null;
+  switchScene(made[0].id); state.sceneSelected = true;
+  applyMode(hasSet(made[0]) ? 'block' : 'set'); fitView();
+  $('#modal').classList.remove('show');
+  refreshAll(); save(); toast(`Imported ${plural(made.length,'scene')}`);
+}
+
+// ---------- help ----------
+function showHelp() {
+  const k = [['Set mode ↔ Blocking mode','E'],['Select / Pan tool','V / H'],['Draw walls / Draw room','W / R'],['Door','D'],['Actor / Camera / Arrow','A / C / X'],['Light / Text','L / T'],
+    ['Finish walls / arrow path','Enter · double-click · right-click'],['Select several','Drag a box on empty canvas · Shift+click'],['Select all','Ctrl/⌘ + A'],
+    ['Pan','Space-drag, middle-drag, or hand tool (H)'],['Zoom','Scroll wheel · pinch · Ctrl+scroll'],['Fit set to view','F'],
+    ['Quick actions','Right-click'],['Add move mark to selection','M'],['Drop a mark by dragging','Alt + drag'],['Play / pause moves','P'],['Rotate selection','[  ]  (Shift = 45°)'],['Nudge','Arrows (Shift = ×4)'],
+    ['Lock to 45° (rotate, walls, arrows, moves)','Hold Shift'],['Resize proportionally','Shift + drag corner'],['Ignore the grid','Hold Ctrl/⌘'],
+    ['Keep tool after placing','Shift + click'],['Duplicate','Ctrl/⌘ + D'],['Delete','Delete'],['Undo / Redo','Ctrl/⌘ + Z / Shift+Z'],['Save now','Ctrl/⌘ + S'],['Deselect / stop tool','Esc']];
+  $('#modalCard').innerHTML = `<div class="ih"><h2>Keyboard shortcuts</h2><button class="ib" data-close>${ico('x')}</button></div><div class="kb">${k.map(([a,b])=>`<div>${a}</div><div><kbd>${b}</kbd></div>`).join('')}</div>`;
+  $('#modal').classList.add('show');
+}
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-close]')) $('#modal').classList.remove('show'); });
+
+// ---------- keyboard ----------
+document.addEventListener('keydown', e => {
+  const typing = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName), mod = e.ctrlKey || e.metaKey, key = e.key.toLowerCase();
+  if ($('#modal').classList.contains('show')) { if (e.key === 'Escape') $('#modal').classList.remove('show'); return; }
+  if (e.key === 'Escape') hideMenu();
+  if (!project || state.view === 'home') return;
+  if (mod && key === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && key === 'y' && !typing) { e.preventDefault(); redo(); return; }
+  if (mod && key === 's') { e.preventDefault(); clearTimeout(saveTimer); storeProject(project); toast('Saved'); return; }
+  if (typing) { if (e.key === 'Escape') e.target.blur(); return; }
+  if (mod && key === 'd') { e.preventDefault(); duplicateSel(); return; }
+  if (mod && key === 'a' && state.view === 'diagram') { e.preventDefault(); selectAll(); return; }
+  if (mod) return;
+  if (e.code === 'Space') { e.preventDefault(); if (!spaceDown) { spaceDown = true; renderCanvas(); } return; }
+  if (state.view !== 'diagram') return;
+  if (state.draw && (state.draw.kind === 'walls' || state.draw.kind === 'arrow')) {
+    const finish = () => state.draw.kind === 'walls' ? finishWalls(false) : finishArrow();
+    if (e.key === 'Enter') { finish(); return; }
+    if (e.key === 'Escape') { finish(); setTool('select'); return; }
+    if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); state.draw.pts.pop(); if (!state.draw.pts.length) state.draw = null; renderCanvas(); return; }
+  }
+  const step = e.shiftKey ? GRID*4 : (state.snap ? GRID : 5);
+  switch (key) {
+    case 'v': setTool('select'); break;
+    case 'h': setTool('pan'); break;
+    case 'e': setMode(state.mode === 'set' ? 'block' : 'set'); break;
+    case 'w': setTool('walls'); break;
+    case 'r': setTool('room'); break;
+    case 'd': setTool('prop:door'); break;
+    case 'a': setTool('actor'); break;
+    case 'c': setTool('camera'); break;
+    case 'x': setTool('arrow'); break;
+    case 'l': setTool('prop:light'); break;
+    case 't': setTool('prop:text'); break;
+    case 'm': addMove(); break;
+    case 'p': togglePlay(); break;
+    case 'f': fitView(); renderCanvas(); break;
+    case '[': case '{': rotateSel(e.shiftKey ? -45 : -15); break;
+    case ']': case '}': rotateSel(e.shiftKey ? 45 : 15); break;
+    case 'delete': case 'backspace': e.preventDefault(); deleteSel(); break;
+    case 'arrowleft': e.preventDefault(); nudge(-step,0); break;
+    case 'arrowright': e.preventDefault(); nudge(step,0); break;
+    case 'arrowup': e.preventDefault(); nudge(0,-step); break;
+    case 'arrowdown': e.preventDefault(); nudge(0,step); break;
+    case '?': case '/': showHelp(); break;
+    case 'escape':
+      if (state.draw) { state.draw = null; renderCanvas(); }
+      else if (state.tool !== 'select') setTool('select');
+      else if (state.sel || state.multi.length) { select(null); refreshAll(); }
+      else if (state.shotId) { state.shotId = null; refreshAll(); }
+      break;
+  }
+});
+document.addEventListener('keyup', e => { if (e.code === 'Space') { spaceDown = false; renderCanvas(); } });
+
+// ---------- boot ----------
+function refreshAll() {
+  if (!project) return;
+  updateHeader(); renderSidebar(); renderInspector(); renderCanvas(); renderBanner(); updatePlaybar();
+  if (state.view === 'list') renderShotlist();
+}
+loadLibrary();
+buildChrome();
+setView('home');
+new ResizeObserver(() => renderCanvas()).observe(svg);
+</script>
+</body>
+</html>

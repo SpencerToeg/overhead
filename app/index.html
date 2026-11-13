@@ -209,7 +209,14 @@ td.desc{max-width:420px;color:var(--muted)}
 .sl-head .seg button{padding:5px 12px}
 .sotools{display:flex;gap:8px;align-items:center;margin:-6px 0 14px}
 .sotools .est{width:58px;display:inline-block;margin:0 4px}
-.sotable td.grip{color:var(--dim);cursor:grab;width:18px;user-select:none;padding-right:0}
+.sotable td.grip{color:var(--dim);cursor:grab;width:18px;user-select:none;padding-right:0;white-space:nowrap}
+.sotable td.grip input{margin:0 6px 0 0;vertical-align:-2px;accent-color:var(--accent);cursor:pointer}
+.sotable tr.picked td{background:color-mix(in srgb,var(--accent) 13%,transparent)}
+.sotable tr.srow.grp td{padding-top:12px;color:var(--text);font-weight:600;cursor:grab}
+.dayhead select.addsc{width:auto;max-width:220px;padding:4px 8px;background:var(--panel)}
+.selbar{position:sticky;bottom:14px;margin:14px auto 0;width:max-content;max-width:100%;display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line2);border-radius:10px;padding:8px 10px 8px 14px;box-shadow:0 8px 28px rgba(0,0,0,.4);z-index:5}
+.selbar[hidden]{display:none}
+.selbar select{width:auto}
 .sotable td.num{color:var(--dim);width:24px;font-variant-numeric:tabular-nums}
 .sotable td.time{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--text);width:70px}
 .sotable input.est{width:58px;padding:4px 6px}
@@ -2427,12 +2434,22 @@ function renderShotlist() {
       <table><thead><tr><th>Shot</th>${dg ? '<th>Diagram</th>' : ''}<th>Size</th><th>Angle</th><th>Move</th><th>Lens</th><th>Camera</th><th>Description</th><th>Dur</th><th>Done</th></tr></thead><tbody>${rows}</tbody></table>`;
   } else body = renderShootOrder(dg);
   $('#shotlist').innerHTML = head + body;
+  if (shoot) updateSel();
   $('#slCsv').onclick = () => exportCSV(shoot ? 'shoot' : 'script'); $('#slPdf').onclick = () => exportShotPDF(dg, shoot ? 'shoot' : 'script'); $('#slXlsx').onclick = () => openXlsxExport(shoot ? 'shoot' : 'script', dg);
   $('#slDg').onchange = e => { state.slDiagrams = e.target.checked; renderShotlist(); };
 }
+// selected shots in the shoot order, by key: 'i:<itemId>' for a scheduled shot, 'f:<shotId>' for an unscheduled one.
+// soOrder is every selectable key in the order shown (for shift-click ranges and moving in order)
+const soSel = new Set(); let soOrder = [], soAnchor = null;
 function renderShootOrder(dg) {
   const sch = schedule(), rows = listRows('shoot'), rest = unscheduled(), cols = dg ? 10 : 9;
   const grip = `<td class="grip" title="Drag to reorder">⋮⋮</td>`;
+  const pick = key => `<td class="grip" title="Select (Shift-click for a range), or drag to reorder"><input type="checkbox" class="sel" data-key="${key}">⋮⋮</td>`;
+  soOrder = [...rows.filter(r => r.kind === 'shot').map(r => 'i:' + r.item.id), ...rest.map(r => 'f:' + r.s.id)];
+  const keep = new Set(soOrder); [...soSel].forEach(k => { if (!keep.has(k)) soSel.delete(k); });
+  // scenes that still have unscheduled shots, for each day's "+ Scene" picker
+  const restBy = []; rest.forEach(r => { let g = restBy[restBy.length-1]; if (!g || g.sc !== r.sc) restBy.push(g = { sc:r.sc, shots:[] }); g.shots.push(r.s); });
+  const sceneOpts = restBy.map(g => `<option value="${g.sc.id}">${esc(sceneNo(g.sc))} · ${esc(g.sc.name)} (${g.shots.length})</option>`).join('');
   const shotCells = (s, sc) => { const cam = camOf(sc, s);
     return `<td><b>${shotNum(sc,s)}</b><br><small style="color:var(--dim)">${esc(sceneNo(sc))} · ${esc(locationName(sc.name) || sc.name)}</small></td>${dg ? `<td class="dgc">${shotDiagram(sc, s)}</td>` : ''}
       <td>${esc(s.size)}<br><small style="color:var(--dim)">${esc(s.move)}</small></td><td>${cam ? `${esc(cam.name)}<br><small style="color:var(--dim)">${cam.lens}mm</small>` : '—'}</td>
@@ -2448,24 +2465,65 @@ function renderShootOrder(dg) {
         <input type="date" data-day="${r.day.id}" data-sk="date" value="${esc(r.day.date || '')}">
         <label>Call <input type="time" data-day="${r.day.id}" data-sk="start" value="${esc(r.day.start || '')}"></label>
         <span class="dsum">${plural(n, 'shot')}</span>
+        ${sceneOpts ? `<select class="addsc" data-day="${r.day.id}" data-tip="Add every unscheduled shot of a scene to this day"><option value="">+ Scene…</option>${sceneOpts}</select>` : ''}
         <button class="btn sm" data-sa="break" data-day="${r.day.id}">${ico('plus',12)} Break</button>
         <button class="ib" data-sa="delday" data-day="${r.day.id}" data-tip="Remove day (its shots go back to Not scheduled)">${ico('x',14)}</button></div></td></tr>`;
     } else if (r.kind === 'shot') {
-      html += `<tr class="shrow ${r.s.done?'isdone':''}" data-id="${r.s.id}" data-item="${r.item.id}" draggable="true">${grip}<td class="num">${r.n}</td><td class="time">${r.time}</td>${shotCells(r.s, r.sc)}</tr>`;
+      html += `<tr class="shrow ${r.s.done?'isdone':''}" data-id="${r.s.id}" data-item="${r.item.id}" data-key="i:${r.item.id}" draggable="true">${pick('i:' + r.item.id)}<td class="num">${r.n}</td><td class="time">${r.time}</td>${shotCells(r.s, r.sc)}</tr>`;
     } else if (r.kind === 'break') {
-      html += `<tr class="brow" data-item="${r.item.id}" draggable="true">${grip}<td></td><td class="time">${r.time}</td><td colspan="${cols - 5}"><input class="blabel" data-item="${r.item.id}" data-sk="label" value="${esc(r.label)}" spellcheck="false"></td>
+      html += `<tr class="brow" data-item="${r.item.id}" data-key="i:${r.item.id}" draggable="true">${grip}<td></td><td class="time">${r.time}</td><td colspan="${cols - 5}"><input class="blabel" data-item="${r.item.id}" data-sk="label" value="${esc(r.label)}" spellcheck="false"></td>
         <td><input type="number" class="est" min="0" step="5" data-item="${r.item.id}" data-sk="minutes" value="${r.minutes}"></td><td><button class="ib" data-sa="delitem" data-item="${r.item.id}" data-tip="Remove">${ico('x',13)}</button></td></tr>`;
     } else if (r.kind === 'wrap') {
       html += `<tr class="wrow" data-dayend="${r.day.id}"><td colspan="${cols}">${r.day.items.length ? `${fmtMins(r.mins)} scheduled${r.time ? ` · wrap ≈ ${r.time}` : ''}` : 'Drag shots here, or use Auto-order'}</td></tr>`;
     }
   }
-  const restRows = rest.map(({ s, sc }) => `<tr class="shrow ${s.done?'isdone':''}" data-id="${s.id}" data-free="${s.id}" draggable="true">${grip}<td></td><td></td>${shotCells(s, sc)}</tr>`).join('');
+  // unscheduled shots grouped by scene: a scene's header row selects or drags all of its shots at once
+  const restRows = restBy.map(g => `<tr class="srow grp" data-unsched="1" data-freescene="${g.sc.id}" draggable="true" title="Drag to move the whole scene"><td class="grip"><input type="checkbox" class="selscene" data-scene="${g.sc.id}" data-tip="Select the whole scene">⋮⋮</td><td colspan="${cols-1}">${esc(sceneNo(g.sc))} · ${esc(g.sc.name)}<span>${plural(g.shots.length,'shot')}</span></td></tr>`
+    + g.shots.map(s => `<tr class="shrow ${s.done?'isdone':''}" data-id="${s.id}" data-free="${s.id}" data-fsc="${g.sc.id}" data-key="f:${s.id}" draggable="true">${pick('f:' + s.id)}<td></td><td></td>${shotCells(s, g.sc)}</tr>`).join('')).join('');
+  const dayOpts = sch.days.map((d, i) => `<option value="${d.id}">${esc(dayLabel(d, i))}</option>`).join('');
   return `<div class="sotools"><button class="btn" data-sa="addday">${ico('plus',14)} Add day</button>
       <button class="btn" data-sa="auto" ${rest.length ? '' : 'disabled'}>${ico('route',14)} Auto-order ${rest.length ? `(${rest.length})` : ''}</button>
       <label class="hint" style="margin:0 0 0 auto">Default shot time <input type="number" class="est" min="0" step="5" data-sk="defaultMin" value="${sch.defaultMin}"> min</label></div>
     ${sch.days.length ? '' : `<div class="hint">Add a shooting day, then drag shots into it, or press <b>Auto-order</b> to group every shot by location, setup and camera. Times run from each day's call time using each shot's estimate.</div>`}
     <table class="sotable"><thead><tr><th></th><th>#</th><th>Time</th><th>Shot</th>${dg ? '<th>Diagram</th>' : ''}<th>Size</th><th>Camera</th><th>Description</th><th>Min</th><th>Done</th></tr></thead>
-    <tbody>${html}<tr class="srow" data-unsched="1"><td colspan="${cols}">Not scheduled <span>${plural(rest.length,'shot')}</span></td></tr>${restRows}</tbody></table>`;
+    <tbody>${html}<tr class="srow" data-unsched="1"><td colspan="${cols}">Not scheduled <span>${plural(rest.length,'shot')}${rest.length ? ' · tick shots or a whole scene, then use Move to' : ''}</span></td></tr>${restRows}</tbody></table>
+    <div class="selbar" hidden><b class="selcount"></b>
+      <select class="moveto"><option value="">Move to…</option>${dayOpts}<option value="new">New day</option><option value="un">Not scheduled</option></select>
+      <button class="btn sm" data-sa="selclear">Clear</button></div>`;
+}
+// reflect soSel in the rows, scene checkboxes and the floating bar without rebuilding the table
+function updateSel() {
+  const root = $('#shotlist');
+  root.querySelectorAll('input.sel').forEach(c => { c.checked = soSel.has(c.dataset.key); c.closest('tr').classList.toggle('picked', c.checked); });
+  root.querySelectorAll('input.selscene').forEach(c => { const ks = [...root.querySelectorAll(`tr[data-fsc="${c.dataset.scene}"]`)].map(r => r.dataset.key), n = ks.filter(k => soSel.has(k)).length;
+    c.checked = n > 0 && n === ks.length; c.indeterminate = n > 0 && n < ks.length; });
+  const bar = root.querySelector('.selbar'); if (!bar) return;
+  bar.hidden = !soSel.size; bar.querySelector('.selcount').textContent = `${plural(soSel.size, 'shot')} selected`;
+}
+const selKeys = () => soOrder.filter(k => soSel.has(k));
+// take shots (by key, in the order given) out of wherever they are; unscheduled shots become new schedule items
+function takeKeys(keys) {
+  const out = [];
+  for (const k of keys) {
+    if (k.startsWith('i:')) { const [d, i] = findItem(k.slice(2)); if (d) out.push(d.items.splice(i, 1)[0]); }
+    else out.push({ id:uid(), shotId:k.slice(2) });
+  }
+  return out;
+}
+function moveKeysTo(keys, dest) {   // dest: a day id, 'new' or 'un'
+  if (!keys.length) return;
+  const sch = schedule();
+  if (dest === 'un' && keys.every(k => k.startsWith('f:'))) { soSel.clear(); updateSel(); return; }
+  pushUndo();
+  let day = null;
+  if (dest === 'new') { const last = sch.days[sch.days.length-1]; let date = '';
+    if (last && last.date) { const d = new Date(last.date + 'T12:00'); d.setDate(d.getDate() + 1); date = d.toISOString().slice(0, 10); }
+    sch.days.push(day = { id:uid(), name:'', date, start:last ? last.start : '08:00', items:[] }); }
+  else if (dest !== 'un') day = sch.days.find(d => d.id === dest);
+  const moving = takeKeys(keys);
+  if (day) day.items.push(...moving);
+  soSel.clear(); save(); renderShotlist();
+  toast(day ? `Moved ${plural(moving.length,'shot')} to ${dayLabel(day, sch.days.indexOf(day))}` : `${plural(moving.length,'shot')} back in Not scheduled`);
 }
 // printable shot list (one table, a diagram per shot) → PDF in the desktop app, print dialog in a browser
 async function exportShotPDF(withDiagrams = true, order = 'script') {
@@ -2507,6 +2565,21 @@ const findItem = id => { for (const d of schedule().days) { const i = d.items.fi
 $('#shotlist').addEventListener('click', e => {
   const ord = e.target.closest('[data-order]'); if (ord) { state.slOrder = ord.dataset.order; renderShotlist(); return; }
   if (e.target.classList.contains('dn')) { const [s] = shotById(e.target.dataset.id); pushUndo(); s.done = e.target.checked; save(); renderShotlist(); renderSidebar(); return; }
+  // selecting shots: tick a box (Shift = range), tick a scene, or Ctrl/Shift-click a row
+  const row = e.target.closest('tr[data-key]');
+  const selClick = e.target.classList.contains('sel') || (row && row.querySelector('input.sel') && (e.shiftKey || e.ctrlKey || e.metaKey) && !e.target.closest('input, button, select'));
+  if (selClick) {
+    const k = row.dataset.key, on = e.target.classList.contains('sel') ? e.target.checked : !soSel.has(k);
+    if (e.shiftKey && soAnchor && soOrder.includes(soAnchor)) { const a = soOrder.indexOf(soAnchor), b = soOrder.indexOf(k);
+      soOrder.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => on ? soSel.add(x) : soSel.delete(x)); }
+    else on ? soSel.add(k) : soSel.delete(k);
+    soAnchor = k; updateSel(); return;
+  }
+  if (e.target.classList.contains('selscene')) {
+    const on = e.target.checked;
+    $('#shotlist').querySelectorAll(`tr[data-fsc="${e.target.dataset.scene}"]`).forEach(r => on ? soSel.add(r.dataset.key) : soSel.delete(r.dataset.key));
+    updateSel(); return;
+  }
   const a = e.target.closest('[data-sa]');
   if (a) {
     const sch = schedule(), day = sch.days.find(d => d.id === a.dataset.day);
@@ -2515,15 +2588,18 @@ $('#shotlist').addEventListener('click', e => {
     else if (a.dataset.sa === 'break') { pushUndo(); day.items.push({ id:uid(), label:'Lunch', minutes:30 }); save(); renderShotlist(); }
     else if (a.dataset.sa === 'delday') { pushUndo(); sch.days = sch.days.filter(d => d !== day); save(); renderShotlist(); }
     else if (a.dataset.sa === 'delitem') { const [d, i] = findItem(a.dataset.item); if (d) { pushUndo(); d.items.splice(i, 1); save(); renderShotlist(); } }
+    else if (a.dataset.sa === 'selclear') { soSel.clear(); updateSel(); }
     return;
   }
-  if (e.target.closest('input, button, select, .grip')) return;
+  if (e.target.closest('input, button, select, .grip, tr.grp')) return;
   const r = e.target.closest('.shrow'); if (r) { setView('diagram'); selectShot(r.dataset.id); }
 });
 // edits to days, breaks and shot estimates (applied when the field is committed, so typing isn't interrupted)
 $('#shotlist').addEventListener('change', e => {
   const el = e.target, sch = project && schedule(); if (!sch) return;
   if (el.classList.contains('est') && el.dataset.shot) { const [s] = shotById(el.dataset.shot); pushUndo(); s.est = el.value === '' ? undefined : Math.max(0, +el.value); save(); renderShotlist(); return; }
+  if (el.classList.contains('moveto')) { if (el.value) moveKeysTo(selKeys(), el.value); return; }
+  if (el.classList.contains('addsc')) { if (el.value) moveKeysTo(unscheduled().filter(r => r.sc.id === el.value).map(r => 'f:' + r.s.id), el.dataset.day); return; }
   const k = el.dataset.sk; if (!k) return;
   pushUndo();
   if (k === 'defaultMin') sch.defaultMin = Math.max(0, +el.value || 0);
@@ -2536,9 +2612,12 @@ $('#shotlist').addEventListener('change', e => {
 let soDrag = null;
 $('#shotlist').addEventListener('dragstart', e => {
   const r = e.target.closest('tr[draggable]'); if (!r) return;
-  soDrag = r.dataset.item ? { item:r.dataset.item } : { shot:r.dataset.free };
+  // a scene header drags all its unscheduled shots; a selected shot drags the whole selection
+  const keys = r.dataset.freescene ? [...$('#shotlist').querySelectorAll(`tr[data-fsc="${r.dataset.freescene}"]`)].map(x => x.dataset.key)
+    : soSel.has(r.dataset.key) ? selKeys() : [r.dataset.key];
+  soDrag = { keys };
   e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', '');
-  r.classList.add('dragging');
+  r.classList.add('dragging'); keys.forEach(k => { const x = $('#shotlist').querySelector(`tr[data-key="${k}"]`); if (x) x.classList.add('dragging'); });
 });
 $('#shotlist').addEventListener('dragover', e => {
   if (!soDrag) return;
@@ -2549,16 +2628,16 @@ $('#shotlist').addEventListener('dragend', () => { soDrag = null; document.query
 $('#shotlist').addEventListener('drop', e => {
   if (!soDrag) return; e.preventDefault();
   const t = e.target.closest('tr[data-item], tr[data-dayrow], tr[data-dayend], tr[data-unsched], tr[data-free]'); if (!t) return;
-  const sch = schedule();
-  if ((soDrag.item && t.dataset.item === soDrag.item) || (soDrag.shot && (t.dataset.unsched || t.dataset.free))) { soDrag = null; return; }   // dropped where it already is
-  let moving;
+  const sch = schedule(), keys = soDrag.keys; soDrag = null;
+  const toUnsched = t.dataset.unsched || t.dataset.free;
+  // dropped where it already is
+  if ((t.dataset.item && keys.includes('i:' + t.dataset.item)) || (toUnsched && keys.every(k => k.startsWith('f:')))) return;
   pushUndo();
-  if (soDrag.item) { const [d, i] = findItem(soDrag.item); if (!d) return; moving = d.items.splice(i, 1)[0]; }
-  else moving = { id:uid(), shotId:soDrag.shot };
-  if (t.dataset.unsched || t.dataset.free) { if (!moving.shotId) { /* a break dropped on "Not scheduled" is removed */ } }
-  else if (t.dataset.item) { const [d, i] = findItem(t.dataset.item); if (d) d.items.splice(i, 0, moving); }
-  else { const d = sch.days.find(x => x.id === (t.dataset.dayrow || t.dataset.dayend)); if (d) (t.dataset.dayrow ? d.items.unshift(moving) : d.items.push(moving)); }
-  soDrag = null; save(); renderShotlist();
+  const moving = takeKeys(keys);   // a break dropped on "Not scheduled" is removed
+  if (toUnsched) {}
+  else if (t.dataset.item) { const [d, i] = findItem(t.dataset.item); if (d) d.items.splice(i, 0, ...moving); }
+  else { const d = sch.days.find(x => x.id === (t.dataset.dayrow || t.dataset.dayend)); if (d) (t.dataset.dayrow ? d.items.unshift(...moving) : d.items.push(...moving)); }
+  soSel.clear(); save(); renderShotlist();
 });
 function exportCSV(order = 'script') {
   const shoot = order === 'shoot', q = v => `"${String(v ?? '').replace(/"/g,'""')}"`;

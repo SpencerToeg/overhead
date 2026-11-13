@@ -183,9 +183,29 @@ function setupUpdates() {
   if (!app.isPackaged) return;
   let autoUpdater;
   try { ({ autoUpdater } = require('electron-updater')); } catch { return; }
+  autoUpdater.on('error', err => console.error('update check failed:', err && err.message));
+  if (process.platform === 'darwin') {
+    // macOS only lets an app replace itself when it is signed with a paid Apple
+    // Developer ID. Overhead isn't, so on Mac we offer the new .dmg instead.
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = false;
+    const offered = new Set();
+    autoUpdater.on('update-available', async info => {
+      if (offered.has(info.version)) return;
+      offered.add(info.version);
+      const r = await dialog.showMessageBox(win, {
+        type: 'info', buttons: ['Download', 'Later'], defaultId: 0, cancelId: 1,
+        message: `Overhead ${info.version} is available`,
+        detail: 'Open the downloaded file, then drag Overhead into Applications and choose Replace. Your projects stay in your library folder and are not changed by updates.',
+      });
+      if (r.response === 0) shell.openExternal(`https://github.com/SpencerToeg/overhead/releases/download/v${info.version}/Overhead-${info.version}-universal.dmg`);
+    });
+    autoUpdater.checkForUpdates().catch(() => {});
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+    return;
+  }
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on('error', err => console.error('update check failed:', err && err.message));
   autoUpdater.on('update-downloaded', async info => {
     const r = await dialog.showMessageBox(win, {
       type: 'info', buttons: ['Restart now', 'Later'], defaultId: 0, cancelId: 1,

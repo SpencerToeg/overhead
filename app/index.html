@@ -206,6 +206,25 @@ tr.shrow{cursor:pointer}
 tr.shrow:hover td{background:var(--panel)}
 tr.shrow.isdone td{color:var(--dim)}
 td.desc{max-width:420px;color:var(--muted)}
+.sl-head .seg button{padding:5px 12px}
+.sotools{display:flex;gap:8px;align-items:center;margin:-6px 0 14px}
+.sotools .est{width:58px;display:inline-block;margin:0 4px}
+.sotable td.grip{color:var(--dim);cursor:grab;width:18px;user-select:none;padding-right:0}
+.sotable td.num{color:var(--dim);width:24px;font-variant-numeric:tabular-nums}
+.sotable td.time{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--text);width:70px}
+.sotable input.est{width:58px;padding:4px 6px}
+.sotable tr.dragging{opacity:.4}
+.sotable tr.drop td{box-shadow:inset 0 2px 0 var(--accent)}
+tr.srow.day td{color:var(--text)}
+.dayhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-weight:500}
+.dayhead input{width:auto;padding:4px 8px;background:var(--panel)}
+.dayhead .dname{font-weight:700;width:140px;color:var(--accent)}
+.dayhead label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+.dayhead .dsum{color:var(--dim);font-size:12px;margin-left:4px;flex:1}
+tr.brow td{background:var(--panel)}
+tr.brow .blabel{background:transparent;border-color:transparent;font-weight:600;padding:4px 6px}
+tr.brow .blabel:hover{border-color:var(--line2)}
+tr.wrow td{color:var(--dim);font-size:12px;padding:6px 10px 2px;border-bottom:0}
 
 /* context menu */
 #menu{position:fixed;z-index:70;min-width:220px;max-width:290px;background:#1b1f27;border:1px solid var(--line2);border-radius:10px;padding:5px;box-shadow:0 14px 36px rgba(0,0,0,.55);display:none}
@@ -2187,6 +2206,7 @@ function renderInspector() {
     h += fld('Description', `<textarea data-k="desc" placeholder="What happens in this shot?">${esc(t.desc)}</textarea>`);
     h += `<div class="row">${fld('Shot size', sin('size', t.size, SIZES))}${fld('Angle', sin('angle', t.angle, ANGLES))}</div>`;
     h += `<div class="row">${fld('Movement', sin('move', t.move, MOVES))}${fld('Duration', nin('duration', t.duration, 's', 'min="0" step="1"'))}</div>`;
+    h += `<div class="row">${fld('Time to shoot', nin('est', +t.est > 0 ? t.est : schedule().defaultMin, 'min', 'min="0" step="5"'))}<div class="f"><span>&nbsp;</span><div class="hint" style="margin:6px 0 0">Setup + takes. Used for shoot-order times.</div></div></div>`;
     h += `<div class="sec"><div class="st">Camera</div><div class="row">${fld('Camera', sin('cameraId', t.cameraId||'', [['','— none —'], ...cams.map(c=>[c.id,c.name])]))}${cam ? fld('Lens', nin('lens', cam.lens, 'mm', 'min="8" max="600"')) : ''}</div>
       ${cam ? `<div class="btns">${btn('sel-cam', 'Select camera on set')}</div><div class="hint">${cam.path.length ? `Camera has ${cam.path.length+1} marks — press <kbd>P</kbd> to preview the move.` : 'Select the camera and press <kbd>M</kbd> to add a camera move.'}</div>` : ''}</div>`;
     h += `<div class="sec">${fld('Notes', `<textarea data-k="notes" placeholder="Gear, lighting, performance notes…">${esc(t.notes)}</textarea>`)}</div>`;
@@ -2318,36 +2338,147 @@ function shotDiagram(sc, s, w = 240, h = 150) {
   if (W/H > r) { H = W/r; Y -= (H-vh)/2; } else { W = H*r; X -= (W-vw)/2; }
   return `<svg class="sdg" xmlns="http://www.w3.org/2000/svg" viewBox="${rnd(X)} ${rnd(Y)} ${rnd(W)} ${rnd(H)}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"><rect x="${rnd(X)}" y="${rnd(Y)}" width="${rnd(W)}" height="${rnd(H)}" fill="${BG}"/>${renderLayers({ clean:true, sc:u, focus:s.cameraId })}</svg>`;
 }
-function renderShotlist() {
-  const total = project.scenes.reduce((a,sc)=>a+sc.shots.length,0), dg = state.slDiagrams !== false;
-  let rows = '';
-  project.scenes.forEach(sc => {
-    const dur = sc.shots.reduce((a,s)=>a+(+s.duration||0),0);
-    rows += `<tr class="srow"><td colspan="${dg ? 10 : 9}">${esc(sceneNo(sc))} · ${esc(sc.name)}<span>${plural(sc.shots.length,'shot')} · ${fmtDur(dur)}</span></td></tr>`;
-    for (const s of sc.shots) {
-      const cam = camOf(sc, s), su = shotSetup(sc, s);
-      rows += `<tr class="shrow ${s.done?'isdone':''}" data-id="${s.id}"><td><b>${shotNum(sc,s)}</b>${sc.setups.length > 1 ? `<br><small style="color:var(--dim)">${esc(su.name)}</small>` : ''}</td>${dg ? `<td class="dgc">${shotDiagram(sc, s)}</td>` : ''}<td>${esc(s.size)}</td><td>${esc(s.angle)}</td><td>${esc(s.move)}</td>
-        <td>${cam?cam.lens+'mm':'—'}</td><td>${cam?esc(cam.name):'—'}</td><td class="desc">${esc(s.desc)}${s.notes?`<br><small style="color:var(--dim)">${esc(s.notes)}</small>`:''}</td>
-        <td>${s.duration?fmtDur(s.duration):''}</td><td><input type="checkbox" class="dn" data-id="${s.id}" ${s.done?'checked':''} style="accent-color:var(--ok)"></td></tr>`;
+// ---------- shoot order ----------
+// project.schedule = { defaultMin, days:[{ id, name, date:'YYYY-MM-DD', start:'HH:MM', items:[{ id, shotId } | { id, label, minutes }] }] }
+function schedule() {
+  if (!project.schedule) project.schedule = { defaultMin:15, days:[] };
+  const live = new Set(project.scenes.flatMap(sc => sc.shots.map(s => s.id)));   // forget shots that were deleted
+  project.schedule.days.forEach(d => { d.items = d.items.filter(i => !i.shotId || live.has(i.shotId)); });
+  return project.schedule;
+}
+const shotMin = s => +s.est > 0 ? +s.est : (+schedule().defaultMin || 0);
+const toMin = hhmm => { const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || ''); return m ? +m[1]*60 + +m[2] : null; };
+const fmtClock = m => { if (m == null) return ''; m = Math.round(m); const h = Math.floor(m/60) % 24, mm = m % 60; return `${(h % 12) || 12}:${String(mm).padStart(2,'0')} ${h < 12 ? 'AM' : 'PM'}`; };
+const fmtMins = m => m >= 60 ? `${Math.floor(m/60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`;
+const dayLabel = (d, i) => `${d.name || `Day ${i+1}`}${d.date ? ` · ${new Date(d.date + 'T12:00').toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' })}` : ''}`;
+const unscheduled = () => { const on = new Set(schedule().days.flatMap(d => d.items.map(i => i.shotId).filter(Boolean))); return project.scenes.flatMap(sc => sc.shots.filter(s => !on.has(s.id)).map(s => ({ s, sc }))); };
+// the rows of a list in order: by scene (script order) or by shooting day (shoot order), with running clock times
+function listRows(order) {
+  const out = [];
+  if (order !== 'shoot') {
+    for (const sc of project.scenes) { if (!sc.shots.length) continue; out.push({ kind:'head', text:`${sceneNo(sc)} · ${sc.name}`, sc }); sc.shots.forEach(s => out.push({ kind:'shot', s, sc })); }
+    return out;
+  }
+  let n = 0;
+  schedule().days.forEach((d, di) => {
+    const t0 = toMin(d.start); let mins = 0;
+    out.push({ kind:'head', text:dayLabel(d, di), day:d, di });
+    for (const it of d.items) {
+      const time = t0 == null ? '' : fmtClock(t0 + mins);
+      if (it.shotId) { const [s, sc] = shotById(it.shotId); if (!s) continue; out.push({ kind:'shot', s, sc, time, n:++n, item:it, day:d }); mins += shotMin(s); }
+      else { out.push({ kind:'break', label:it.label || 'Break', minutes:+it.minutes || 0, time, item:it, day:d }); mins += +it.minutes || 0; }
     }
+    out.push({ kind:'wrap', day:d, mins, time: t0 == null ? '' : fmtClock(t0 + mins) });
   });
-  $('#shotlist').innerHTML = `<div class="sl-head"><h1>${esc(project.name)} — Shot list</h1><span style="color:var(--muted)">${plural(total,'shot')}</span>
+  return out;
+}
+function addDay() {
+  pushUndo(); const sch = schedule(), last = sch.days[sch.days.length-1];
+  let date = '';
+  if (last && last.date) { const d = new Date(last.date + 'T12:00'); d.setDate(d.getDate() + 1); date = d.toISOString().slice(0, 10); }
+  sch.days.push({ id:uid(), name:'', date, start:last ? last.start : '08:00', items:[] });
+  save(); renderShotlist();
+}
+// put every unscheduled shot into the last day, grouped so the crew finishes one location, then one setup,
+// then one camera position before moving on (fewer company moves and resets)
+function autoOrder() {
+  const rest = unscheduled(); if (!rest.length) { toast('Every shot is already in the shoot order'); return; }
+  pushUndo(); const sch = schedule();
+  if (!sch.days.length) sch.days.push({ id:uid(), name:'', date:'', start:'08:00', items:[] });
+  const locKey = r => { const l = locById(shotSetup(r.sc, r.s).locationId); return l ? l.name : (locationName(r.sc.name) || r.sc.name); };
+  const first = {}; rest.forEach((r, i) => { const k = locKey(r); if (!(k in first)) first[k] = i; });
+  const camIdx = r => shotSetup(r.sc, r.s).objects.findIndex(o => o.id === r.s.cameraId);
+  const suIdx = r => r.sc.setups.indexOf(shotSetup(r.sc, r.s));
+  rest.sort((a, b) => first[locKey(a)] - first[locKey(b)] || sceneIndex(a.sc) - sceneIndex(b.sc) || suIdx(a) - suIdx(b) || camIdx(a) - camIdx(b) || a.sc.shots.indexOf(a.s) - b.sc.shots.indexOf(b.s));
+  sch.days[sch.days.length-1].items.push(...rest.map(r => ({ id:uid(), shotId:r.s.id })));
+  save(); renderShotlist(); toast(`Added ${plural(rest.length,'shot')}, grouped by location, setup and camera`);
+}
+// actors a shot's camera can see at any of their marks (or everyone in the setup when there's no camera)
+function castInShot(sc, s) {
+  const u = shotSetup(sc, s), cam = camOf(sc, s), actors = u.objects.filter(o => o.type === 'actor');
+  if (!cam) return actors.map(o => o.name);
+  const half = fovOf(cam.lens)/2 + 4, reach = Math.max(cam.range, 4) * M * 1.5;
+  const sees = (c, p) => { const dx = p.x - c.x, dy = p.y - c.y; return Math.hypot(dx, dy) <= reach && Math.abs(normDeg(Math.atan2(dx, -dy)*180/Math.PI - c.rot)) <= half; };
+  const spots = a => [...poses(a), ...(a.path || []).flatMap(q => q.via || [])];   // marks and bend points
+  return actors.filter(a => spots(a).some(p => poses(cam).some(c => sees(c, p)))).map(o => o.name);
+}
+
+function renderShotlist() {
+  const total = project.scenes.reduce((a,sc)=>a+sc.shots.length,0), dg = state.slDiagrams !== false, shoot = state.slOrder === 'shoot';
+  const head = `<div class="sl-head"><h1>${esc(project.name)}</h1>
+    <div class="seg" style="margin:0"><button data-order="script" class="${shoot ? '' : 'on'}">Script order</button><button data-order="shoot" class="${shoot ? 'on' : ''}">Shoot order</button></div>
+    <span style="flex:1"></span>
     <label class="check" style="margin-right:6px"><input type="checkbox" id="slDg" ${dg?'checked':''}> Diagrams</label>
-    <button class="btn" id="slCsv">${ico('csv',14)} Export CSV</button><button class="btn primary" id="slPdf">${ico('print',14)} Export PDF</button></div>
-    <table><thead><tr><th>Shot</th>${dg ? '<th>Diagram</th>' : ''}<th>Size</th><th>Angle</th><th>Move</th><th>Lens</th><th>Camera</th><th>Description</th><th>Dur</th><th>Done</th></tr></thead><tbody>${rows}</tbody></table>`;
-  $('#slCsv').onclick = exportCSV; $('#slPdf').onclick = () => exportShotPDF(dg);
+    <button class="btn" id="slCsv">${ico('csv',14)} CSV</button><button class="btn" id="slPdf">${ico('print',14)} PDF</button><button class="btn primary" id="slXlsx">${ico('grid',14)} Excel</button></div>`;
+  let body;
+  if (!shoot) {
+    let rows = '';
+    project.scenes.forEach(sc => {
+      const dur = sc.shots.reduce((a,s)=>a+(+s.duration||0),0);
+      rows += `<tr class="srow"><td colspan="${dg ? 10 : 9}">${esc(sceneNo(sc))} · ${esc(sc.name)}<span>${plural(sc.shots.length,'shot')} · ${fmtDur(dur)}</span></td></tr>`;
+      for (const s of sc.shots) {
+        const cam = camOf(sc, s), su = shotSetup(sc, s);
+        rows += `<tr class="shrow ${s.done?'isdone':''}" data-id="${s.id}"><td><b>${shotNum(sc,s)}</b>${sc.setups.length > 1 ? `<br><small style="color:var(--dim)">${esc(su.name)}</small>` : ''}</td>${dg ? `<td class="dgc">${shotDiagram(sc, s)}</td>` : ''}<td>${esc(s.size)}</td><td>${esc(s.angle)}</td><td>${esc(s.move)}</td>
+          <td>${cam?cam.lens+'mm':'—'}</td><td>${cam?esc(cam.name):'—'}</td><td class="desc">${esc(s.desc)}${s.notes?`<br><small style="color:var(--dim)">${esc(s.notes)}</small>`:''}</td>
+          <td>${s.duration?fmtDur(s.duration):''}</td><td><input type="checkbox" class="dn" data-id="${s.id}" ${s.done?'checked':''} style="accent-color:var(--ok)"></td></tr>`;
+      }
+    });
+    body = `<div class="hint" style="margin:-8px 0 14px">${plural(total,'shot')} in script order. Switch to <b>Shoot order</b> to plan shooting days.</div>
+      <table><thead><tr><th>Shot</th>${dg ? '<th>Diagram</th>' : ''}<th>Size</th><th>Angle</th><th>Move</th><th>Lens</th><th>Camera</th><th>Description</th><th>Dur</th><th>Done</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } else body = renderShootOrder(dg);
+  $('#shotlist').innerHTML = head + body;
+  $('#slCsv').onclick = () => exportCSV(shoot ? 'shoot' : 'script'); $('#slPdf').onclick = () => exportShotPDF(dg, shoot ? 'shoot' : 'script'); $('#slXlsx').onclick = () => openXlsxExport(shoot ? 'shoot' : 'script', dg);
   $('#slDg').onchange = e => { state.slDiagrams = e.target.checked; renderShotlist(); };
 }
+function renderShootOrder(dg) {
+  const sch = schedule(), rows = listRows('shoot'), rest = unscheduled(), cols = dg ? 10 : 9;
+  const grip = `<td class="grip" title="Drag to reorder">⋮⋮</td>`;
+  const shotCells = (s, sc) => { const cam = camOf(sc, s);
+    return `<td><b>${shotNum(sc,s)}</b><br><small style="color:var(--dim)">${esc(sceneNo(sc))} · ${esc(locationName(sc.name) || sc.name)}</small></td>${dg ? `<td class="dgc">${shotDiagram(sc, s)}</td>` : ''}
+      <td>${esc(s.size)}<br><small style="color:var(--dim)">${esc(s.move)}</small></td><td>${cam ? `${esc(cam.name)}<br><small style="color:var(--dim)">${cam.lens}mm</small>` : '—'}</td>
+      <td class="desc">${esc(s.desc)}${s.notes?`<br><small style="color:var(--dim)">${esc(s.notes)}</small>`:''}${castInShot(sc, s).length ? `<br><small style="color:var(--muted)">In frame: ${esc(castInShot(sc, s).join(', '))}</small>` : ''}</td>
+      <td><input type="number" class="est" min="0" step="5" data-shot="${s.id}" value="${+s.est > 0 ? s.est : ''}" placeholder="${sch.defaultMin}"></td>
+      <td><input type="checkbox" class="dn" data-id="${s.id}" ${s.done?'checked':''} style="accent-color:var(--ok)"></td>`; };
+  let html = '';
+  for (const r of rows) {
+    if (r.kind === 'head') {
+      const n = r.day.items.filter(i => i.shotId).length;
+      html += `<tr class="srow day" data-dayrow="${r.day.id}"><td colspan="${cols}"><div class="dayhead">
+        <input class="dname" data-day="${r.day.id}" data-sk="name" value="${esc(r.day.name)}" placeholder="Day ${r.di+1}" spellcheck="false">
+        <input type="date" data-day="${r.day.id}" data-sk="date" value="${esc(r.day.date || '')}">
+        <label>Call <input type="time" data-day="${r.day.id}" data-sk="start" value="${esc(r.day.start || '')}"></label>
+        <span class="dsum">${plural(n, 'shot')}</span>
+        <button class="btn sm" data-sa="break" data-day="${r.day.id}">${ico('plus',12)} Break</button>
+        <button class="ib" data-sa="delday" data-day="${r.day.id}" data-tip="Remove day (its shots go back to Not scheduled)">${ico('x',14)}</button></div></td></tr>`;
+    } else if (r.kind === 'shot') {
+      html += `<tr class="shrow ${r.s.done?'isdone':''}" data-id="${r.s.id}" data-item="${r.item.id}" draggable="true">${grip}<td class="num">${r.n}</td><td class="time">${r.time}</td>${shotCells(r.s, r.sc)}</tr>`;
+    } else if (r.kind === 'break') {
+      html += `<tr class="brow" data-item="${r.item.id}" draggable="true">${grip}<td></td><td class="time">${r.time}</td><td colspan="${cols - 5}"><input class="blabel" data-item="${r.item.id}" data-sk="label" value="${esc(r.label)}" spellcheck="false"></td>
+        <td><input type="number" class="est" min="0" step="5" data-item="${r.item.id}" data-sk="minutes" value="${r.minutes}"></td><td><button class="ib" data-sa="delitem" data-item="${r.item.id}" data-tip="Remove">${ico('x',13)}</button></td></tr>`;
+    } else if (r.kind === 'wrap') {
+      html += `<tr class="wrow" data-dayend="${r.day.id}"><td colspan="${cols}">${r.day.items.length ? `${fmtMins(r.mins)} scheduled${r.time ? ` · wrap ≈ ${r.time}` : ''}` : 'Drag shots here, or use Auto-order'}</td></tr>`;
+    }
+  }
+  const restRows = rest.map(({ s, sc }) => `<tr class="shrow ${s.done?'isdone':''}" data-id="${s.id}" data-free="${s.id}" draggable="true">${grip}<td></td><td></td>${shotCells(s, sc)}</tr>`).join('');
+  return `<div class="sotools"><button class="btn" data-sa="addday">${ico('plus',14)} Add day</button>
+      <button class="btn" data-sa="auto" ${rest.length ? '' : 'disabled'}>${ico('route',14)} Auto-order ${rest.length ? `(${rest.length})` : ''}</button>
+      <label class="hint" style="margin:0 0 0 auto">Default shot time <input type="number" class="est" min="0" step="5" data-sk="defaultMin" value="${sch.defaultMin}"> min</label></div>
+    ${sch.days.length ? '' : `<div class="hint">Add a shooting day, then drag shots into it, or press <b>Auto-order</b> to group every shot by location, setup and camera. Times run from each day's call time using each shot's estimate.</div>`}
+    <table class="sotable"><thead><tr><th></th><th>#</th><th>Time</th><th>Shot</th>${dg ? '<th>Diagram</th>' : ''}<th>Size</th><th>Camera</th><th>Description</th><th>Min</th><th>Done</th></tr></thead>
+    <tbody>${html}<tr class="srow" data-unsched="1"><td colspan="${cols}">Not scheduled <span>${plural(rest.length,'shot')}</span></td></tr>${restRows}</tbody></table>`;
+}
 // printable shot list (one table, a diagram per shot) → PDF in the desktop app, print dialog in a browser
-async function exportShotPDF(withDiagrams = true) {
-  const rows = project.scenes.map(sc => {
-    if (!sc.shots.length) return '';
-    return `<tr class="sr"><td colspan="${withDiagrams ? 5 : 4}">${esc(sceneNo(sc))} · ${esc(sc.name)}</td></tr>` + sc.shots.map(s => {
-      const cam = camOf(sc, s), su = shotSetup(sc, s);
-      return `<tr><td class="n">${shotNum(sc,s)}${sc.setups.length > 1 ? `<small>${esc(su.name)}</small>` : ''}</td>${withDiagrams ? `<td class="d">${shotDiagram(sc, s, 300, 188)}</td>` : ''}
-        <td class="m"><b>${esc(s.size)}</b><br>${esc(s.angle)}<br>${esc(s.move)}${cam ? `<br>${esc(cam.name)} · ${cam.lens}mm` : ''}${s.duration ? `<br>${fmtDur(s.duration)}` : ''}</td>
-        <td class="t">${esc(s.desc)}${s.notes ? `<div class="no">${esc(s.notes)}</div>` : ''}</td><td class="c">${s.done ? '✓' : ''}</td></tr>`;
-    }).join('');
+async function exportShotPDF(withDiagrams = true, order = 'script') {
+  const shoot = order === 'shoot', span = (withDiagrams ? 5 : 4) + (shoot ? 1 : 0);
+  if (shoot && !schedule().days.length) { toast('Add a shooting day first'); return; }
+  const rows = listRows(order).map(r => {
+    if (r.kind === 'head') return `<tr class="sr"><td colspan="${span}">${esc(r.text)}${r.day && r.day.start ? ` <span class="call">Call ${fmtClock(toMin(r.day.start))}</span>` : ''}</td></tr>`;
+    if (r.kind === 'break') return `<tr class="br"><td class="tm">${r.time}</td><td colspan="${span-1}">${esc(r.label)} · ${r.minutes} min</td></tr>`;
+    if (r.kind === 'wrap') return r.time ? `<tr class="wr"><td colspan="${span}">Wrap ≈ ${r.time}</td></tr>` : '';
+    const { s, sc } = r, cam = camOf(sc, s), su = shotSetup(sc, s), cast = castInShot(sc, s);
+    return `<tr>${shoot ? `<td class="tm">${r.time}</td>` : ''}<td class="n">${shotNum(sc,s)}${shoot ? `<small>Sc ${esc(sceneNo(sc))}</small>` : ''}${sc.setups.length > 1 ? `<small>${esc(su.name)}</small>` : ''}</td>${withDiagrams ? `<td class="d">${shotDiagram(sc, s, 300, 188)}</td>` : ''}
+      <td class="m"><b>${esc(s.size)}</b><br>${esc(s.angle)}<br>${esc(s.move)}${cam ? `<br>${esc(cam.name)} · ${cam.lens}mm` : ''}${s.duration ? `<br>${fmtDur(s.duration)}` : ''}${shoot ? `<br>${shotMin(s)} min` : ''}</td>
+      <td class="t">${esc(s.desc)}${cast.length ? `<div class="no">In frame: ${esc(cast.join(', '))}</div>` : ''}${s.notes ? `<div class="no">${esc(s.notes)}</div>` : ''}</td><td class="c">${s.done ? '✓' : ''}</td></tr>`;
   }).join('');
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(project.name)} — Shot list</title><style>
     @page{size:letter landscape;margin:12mm}
@@ -2359,27 +2490,249 @@ async function exportShotPDF(withDiagrams = true) {
     td.n{font-weight:800;font-size:14px;width:46px} td.n small{display:block;font-weight:500;font-size:9px;color:#777}
     td.d{width:300px} td.d svg{display:block;border-radius:4px} td.m{width:120px;color:#333} td.c{width:18px;text-align:center}
     .no{color:#666;margin-top:4px;font-size:10px}
-  </style></head><body><h1>${esc(project.name)} — Shot list</h1><div class="sub">${plural(project.scenes.reduce((a,sc)=>a+sc.shots.length,0),'shot')} · ${new Date().toLocaleDateString()}</div>
-  <table><thead><tr><th>Shot</th>${withDiagrams ? '<th>Diagram</th>' : ''}<th>Setup</th><th>Description / notes</th><th>✓</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+    td.tm{width:56px;font-weight:700;white-space:nowrap} tr.br td{background:#f1f2f4;font-weight:600} tr.wr td{color:#777;border-bottom:0;padding-top:2px}
+    .call{font-weight:500;color:#555;margin-left:8px}
+  </style></head><body><h1>${esc(project.name)} — ${shoot ? 'Shoot order' : 'Shot list'}</h1><div class="sub">${plural(listRows(order).filter(r => r.kind === 'shot').length,'shot')} · ${new Date().toLocaleDateString()}</div>
+  <table><thead><tr>${shoot ? '<th>Time</th>' : ''}<th>Shot</th>${withDiagrams ? '<th>Diagram</th>' : ''}<th>Setup</th><th>Description / notes</th><th>✓</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
   if (host && host.savePDF) {
     toast('Making PDF…');
-    const ok = await host.savePDF(html, `${safeName()} shot list.pdf`);
+    const ok = await host.savePDF(html, `${safeName()} ${shoot ? 'shoot order' : 'shot list'}.pdf`);
     if (ok) toast('Shot list PDF saved'); else if (ok === false) toast("Couldn't make the PDF");
     return;
   }
   const w = window.open('', '_blank'); if (!w) { toast('Allow pop-ups to print'); return; }
   w.document.write(html); w.document.close(); setTimeout(() => w.print(), 300);
 }
+const findItem = id => { for (const d of schedule().days) { const i = d.items.findIndex(x => x.id === id); if (i >= 0) return [d, i]; } return [null, -1]; };
 $('#shotlist').addEventListener('click', e => {
+  const ord = e.target.closest('[data-order]'); if (ord) { state.slOrder = ord.dataset.order; renderShotlist(); return; }
   if (e.target.classList.contains('dn')) { const [s] = shotById(e.target.dataset.id); pushUndo(); s.done = e.target.checked; save(); renderShotlist(); renderSidebar(); return; }
+  const a = e.target.closest('[data-sa]');
+  if (a) {
+    const sch = schedule(), day = sch.days.find(d => d.id === a.dataset.day);
+    if (a.dataset.sa === 'addday') addDay();
+    else if (a.dataset.sa === 'auto') autoOrder();
+    else if (a.dataset.sa === 'break') { pushUndo(); day.items.push({ id:uid(), label:'Lunch', minutes:30 }); save(); renderShotlist(); }
+    else if (a.dataset.sa === 'delday') { pushUndo(); sch.days = sch.days.filter(d => d !== day); save(); renderShotlist(); }
+    else if (a.dataset.sa === 'delitem') { const [d, i] = findItem(a.dataset.item); if (d) { pushUndo(); d.items.splice(i, 1); save(); renderShotlist(); } }
+    return;
+  }
+  if (e.target.closest('input, button, select, .grip')) return;
   const r = e.target.closest('.shrow'); if (r) { setView('diagram'); selectShot(r.dataset.id); }
 });
-function exportCSV() {
-  const q = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
-  const lines = [['Scene','Shot','Size','Angle','Movement','Lens (mm)','Camera','Description','Notes','Duration (s)','Done'].map(q).join(',')];
-  project.scenes.forEach(sc => sc.shots.forEach(s => { const cam = camOf(sc, s);
-    lines.push([`${sceneNo(sc)} ${sc.name}`, shotNum(sc,s), s.size, s.angle, s.move, cam?cam.lens:'', cam?cam.name:'', s.desc, s.notes, s.duration||'', s.done?'yes':''].map(q).join(',')); }));
-  download(`${safeName()} shot list.csv`, new Blob([lines.join('\r\n')], {type:'text/csv'})); toast('Shot list exported');
+// edits to days, breaks and shot estimates (applied when the field is committed, so typing isn't interrupted)
+$('#shotlist').addEventListener('change', e => {
+  const el = e.target, sch = project && schedule(); if (!sch) return;
+  if (el.classList.contains('est') && el.dataset.shot) { const [s] = shotById(el.dataset.shot); pushUndo(); s.est = el.value === '' ? undefined : Math.max(0, +el.value); save(); renderShotlist(); return; }
+  const k = el.dataset.sk; if (!k) return;
+  pushUndo();
+  if (k === 'defaultMin') sch.defaultMin = Math.max(0, +el.value || 0);
+  else if (el.dataset.day) { const d = sch.days.find(x => x.id === el.dataset.day); if (d) d[k] = el.value.trim(); }
+  else if (el.dataset.item) { const [d, i] = findItem(el.dataset.item); if (d) d.items[i][k] = k === 'minutes' ? Math.max(0, +el.value || 0) : el.value; }
+  save(); renderShotlist();
+});
+// drag rows to reorder: onto a row = put it before that row, onto a day's header or end = add to that day,
+// onto "Not scheduled" = take it out of the schedule
+let soDrag = null;
+$('#shotlist').addEventListener('dragstart', e => {
+  const r = e.target.closest('tr[draggable]'); if (!r) return;
+  soDrag = r.dataset.item ? { item:r.dataset.item } : { shot:r.dataset.free };
+  e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', '');
+  r.classList.add('dragging');
+});
+$('#shotlist').addEventListener('dragover', e => {
+  if (!soDrag) return;
+  const t = e.target.closest('tr[data-item], tr[data-dayrow], tr[data-dayend], tr[data-unsched], tr[data-free]'); if (!t) return;
+  e.preventDefault(); document.querySelectorAll('#shotlist .drop').forEach(x => x.classList.remove('drop')); t.classList.add('drop');
+});
+$('#shotlist').addEventListener('dragend', () => { soDrag = null; document.querySelectorAll('#shotlist .drop, #shotlist .dragging').forEach(x => x.classList.remove('drop', 'dragging')); });
+$('#shotlist').addEventListener('drop', e => {
+  if (!soDrag) return; e.preventDefault();
+  const t = e.target.closest('tr[data-item], tr[data-dayrow], tr[data-dayend], tr[data-unsched], tr[data-free]'); if (!t) return;
+  const sch = schedule();
+  if ((soDrag.item && t.dataset.item === soDrag.item) || (soDrag.shot && (t.dataset.unsched || t.dataset.free))) { soDrag = null; return; }   // dropped where it already is
+  let moving;
+  pushUndo();
+  if (soDrag.item) { const [d, i] = findItem(soDrag.item); if (!d) return; moving = d.items.splice(i, 1)[0]; }
+  else moving = { id:uid(), shotId:soDrag.shot };
+  if (t.dataset.unsched || t.dataset.free) { if (!moving.shotId) { /* a break dropped on "Not scheduled" is removed */ } }
+  else if (t.dataset.item) { const [d, i] = findItem(t.dataset.item); if (d) d.items.splice(i, 0, moving); }
+  else { const d = sch.days.find(x => x.id === (t.dataset.dayrow || t.dataset.dayend)); if (d) (t.dataset.dayrow ? d.items.unshift(moving) : d.items.push(moving)); }
+  soDrag = null; save(); renderShotlist();
+});
+function exportCSV(order = 'script') {
+  const shoot = order === 'shoot', q = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
+  const lines = [[...(shoot ? ['Day','#','Time'] : []), 'Scene','Shot','Size','Angle','Movement','Lens (mm)','Camera','In frame','Description','Notes','Duration (s)', ...(shoot ? ['Est. min'] : []), 'Done'].map(q).join(',')];
+  let day = '';
+  for (const r of listRows(order)) {
+    if (r.kind === 'head') { day = r.text; continue; }
+    if (r.kind === 'break') { lines.push([day, '', r.time, '', r.label, '', '', '', '', '', '', '', '', '', r.minutes, ''].map(q).join(',')); continue; }
+    if (r.kind !== 'shot') continue;
+    const { s, sc } = r, cam = camOf(sc, s);
+    lines.push([...(shoot ? [day, r.n, r.time] : []), `${sceneNo(sc)} ${sc.name}`, shotNum(sc,s), s.size, s.angle, s.move, cam?cam.lens:'', cam?cam.name:'', castInShot(sc, s).join(', '), s.desc, s.notes, s.duration||'', ...(shoot ? [shotMin(s)] : []), s.done?'yes':''].map(q).join(','));
+  }
+  download(`${safeName()} ${shoot ? 'shoot order' : 'shot list'}.csv`, new Blob([lines.join('\r\n')], {type:'text/csv'})); toast('CSV exported');
+}
+
+// ---------- Excel export ----------
+// A real .xlsx, built here (no library): a zip of XML parts plus PNG diagrams.
+// "cells" = pictures placed IN cells (Excel 365 / 2024; they move with their row when you sort or reorder),
+// "over" = pictures floating over cells (Google Sheets and older Excel), "none" = no pictures.
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(b) { let c = ~0; for (let i = 0; i < b.length; i++) c = CRC_TABLE[(c ^ b[i]) & 255] ^ (c >>> 8); return (~c) >>> 0; }
+function zipFiles(files, type) {   // stored (uncompressed) zip; PNGs are already compressed
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), data = typeof f.data === 'string' ? enc.encode(f.data) : f.data, crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(12, 0x21, true);
+    h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, name.length, true);
+    parts.push(new Uint8Array(h.buffer), name, data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(14, 0x21, true);
+    c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, name.length, true); c.setUint32(42, off, true);
+    central.push(new Uint8Array(c.buffer), name);
+    off += 30 + name.length + data.length;
+  }
+  const size = central.reduce((a, b) => a + b.length, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, size, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type });
+}
+async function svgToPng(svgStr, w, h) {
+  const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr); await img.decode();
+  const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
+  return new Uint8Array(await (await new Promise(r => c.toBlob(r, 'image/png'))).arrayBuffer());
+}
+function openXlsxExport(order, withDiagrams) {
+  if (order === 'shoot' && !schedule().days.length) { toast('Add a shooting day first, or export in script order'); return; }
+  const mode = state.xlsxImages || (withDiagrams ? 'cells' : 'none');
+  const opt = (v, t, d) => `<label class="imp-row"><input type="radio" name="xim" value="${v}" ${mode === v ? 'checked' : ''}><div><div class="h">${t}</div><div class="c">${d}</div></div></label>`;
+  $('#modalCard').innerHTML = `<div class="ih"><h2>Export to Excel — ${order === 'shoot' ? 'shoot order' : 'script order'}</h2><button class="ib" data-close>${ico('x')}</button></div>
+    <div class="imp-list" style="max-height:none">
+      ${opt('cells', 'Diagrams inside the cells', 'Best for Excel (Microsoft 365 or Excel 2024). Each picture belongs to its row, so it moves when you sort or drag rows.')}
+      ${opt('over', 'Diagrams over the cells', 'For Google Sheets (File → Import) and older Excel. Pictures sit on top of their row but don\'t follow it if you re-sort, so reorder in Overhead first.')}
+      ${opt('none', 'No diagrams', 'A plain table with every column.')}
+    </div>
+    <div class="hint">Columns: ${order === 'shoot' ? 'day, #, time, ' : ''}scene, shot, diagram, size, angle, move, lens, camera, who's in frame, description, notes${order === 'shoot' ? ', minutes' : ''}, done.</div>
+    <div class="btns" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="xGo">${ico('download',14)} Export .xlsx</button></div>`;
+  $('#modal').classList.add('show');
+  $('#xGo').onclick = () => { const m = $('#modalCard').querySelector('[name=xim]:checked').value; state.xlsxImages = m; $('#modal').classList.remove('show'); exportXLSX(order, m); };
+}
+async function exportXLSX(order = 'script', imageMode = 'cells', test = null) {   // test = { w, h, out } for automated checks
+  const shoot = order === 'shoot', rows = listRows(order), pics = imageMode !== 'none';
+  toast('Building spreadsheet…');
+  // columns: key, header, width (Excel character units)
+  const cols = [...(shoot ? [['day','Day',14],['n','#',5],['time','Time',10]] : []), ['scene','Scene',26], ['shot','Shot',8], ...(pics ? [['img','Diagram',44]] : []),
+    ['size','Size',8], ['angle','Angle',11], ['move','Move',12], ['lens','Lens',7], ['cam','Camera',10], ['cast','In frame',18], ['desc','Description',42], ['notes','Notes',30],
+    ...(shoot ? [['min','Min',6]] : []), ['done','Done',6]];
+  const IMG_W = test ? test.w : 300, IMG_H = test ? test.h : 188, ROW_PT = 148;   // picture px; row height pt (≈197 px)
+  const X = s => String(s ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+  const col = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const str = (r, c, v, st = 1) => v === '' || v == null ? `<c r="${col(c)}${r}" s="${st}"/>` : `<c r="${col(c)}${r}" t="inlineStr" s="${st}"><is><t xml:space="preserve">${X(v)}</t></is></c>`;
+  const num = (r, c, v, st = 1) => `<c r="${col(c)}${r}" s="${st}"><v>${+v}</v></c>`;
+  const images = [], sheetRows = [], merges = [];
+  let rn = 1, day = '';
+  sheetRows.push(`<row r="1" ht="20" customHeight="1">${cols.map((c, i) => str(1, i, c[1], 2)).join('')}</row>`);
+  for (const r of rows) {
+    if (r.kind === 'wrap') continue;
+    rn++;
+    if (r.kind === 'head') {
+      day = r.text;
+      sheetRows.push(`<row r="${rn}" ht="22" customHeight="1">${str(rn, 0, r.text + (r.day && r.day.start ? `   ·   Call ${fmtClock(toMin(r.day.start))}` : ''), 3)}${cols.slice(1).map((c, i) => `<c r="${col(i+1)}${rn}" s="3"/>`).join('')}</row>`);
+      merges.push(`A${rn}:${col(cols.length - 1)}${rn}`);
+      continue;
+    }
+    if (r.kind === 'break') {
+      sheetRows.push(`<row r="${rn}" ht="20" customHeight="1">${cols.map((c, i) => c[0] === 'day' ? str(rn, i, day, 5) : c[0] === 'time' ? str(rn, i, r.time, 5) : c[0] === 'scene' ? str(rn, i, `${r.label} · ${r.minutes} min`, 5) : c[0] === 'min' ? num(rn, i, r.minutes, 5) : `<c r="${col(i)}${rn}" s="5"/>`).join('')}</row>`);
+      continue;
+    }
+    const { s, sc } = r, cam = camOf(sc, s);
+    let cells = '';
+    cols.forEach((c, i) => {
+      const k = c[0];
+      if (k === 'img') {
+        images.push({ row:rn, col:i, svg:shotDiagram(sc, s, IMG_W*2, IMG_H*2), name:shotNum(sc, s) });
+        cells += imageMode === 'cells' ? `<c r="${col(i)}${rn}" s="1" t="e" vm="${images.length}"><v>#VALUE!</v></c>` : `<c r="${col(i)}${rn}" s="1"/>`;
+        return;
+      }
+      const v = { day, n:r.n, time:r.time, scene:`${sceneNo(sc)} · ${sc.name}`, shot:shotNum(sc, s), size:s.size, angle:s.angle, move:s.move, lens:cam ? `${cam.lens}mm` : '',
+        cam:cam ? cam.name : '', cast:castInShot(sc, s).join(', '), desc:s.desc, notes:s.notes, min:shotMin(s), done:s.done ? '✓' : '' }[k];
+      cells += k === 'n' || k === 'min' ? num(rn, i, v) : str(rn, i, v, k === 'shot' ? 4 : 1);
+    });
+    sheetRows.push(`<row r="${rn}"${pics ? ` ht="${ROW_PT}" customHeight="1"` : ''}>${cells}</row>`);
+  }
+  // render the diagrams to PNG
+  const media = [];
+  for (let i = 0; i < images.length; i++) {
+    try { media.push(await svgToPng(images[i].svg, IMG_W*2, IMG_H*2)); }
+    catch (e) { toast(`Couldn't draw the diagram for ${images[i].name}`); return; }
+  }
+  const sheetName = shoot ? 'Shoot order' : 'Shot list', lastCol = col(cols.length - 1);
+  const ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  const files = [];
+  const ct = [`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`, `<Default Extension="xml" ContentType="application/xml"/>`,
+    ...(media.length ? [`<Default Extension="png" ContentType="image/png"/>`] : []),
+    `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`,
+    `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+    `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`,
+    `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>`,
+    `<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>`];
+  const wbRels = [`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>`,
+    `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`];
+  let sheetTail = '';
+  media.forEach((m, i) => files.push({ name:`xl/media/image${i+1}.png`, data:m }));
+  if (media.length && imageMode === 'cells') {
+    // pictures in cells: each cell's vm points (via metadata) to a rich value that points to the picture
+    const n = media.length;
+    files.push({ name:'xl/metadata.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<metadata xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:xlrd="http://schemas.microsoft.com/office/spreadsheetml/2017/richdata"><metadataTypes count="1"><metadataType name="XLRICHVALUE" minSupportedVersion="120000" copy="1" pasteAll="1" pasteValues="1" merge="1" splitFirst="1" rowColShift="1" clearFormats="1" clearComments="1" assign="1" coerce="1"/></metadataTypes><futureMetadata name="XLRICHVALUE" count="${n}">${media.map((_, i) => `<bk><extLst><ext uri="{3e2802c4-a4d2-4d8b-9148-e3be6c30e623}"><xlrd:rvb i="${i}"/></ext></extLst></bk>`).join('')}</futureMetadata><valueMetadata count="${n}">${media.map((_, i) => `<bk><rc t="1" v="${i}"/></bk>`).join('')}</valueMetadata></metadata>` });
+    files.push({ name:'xl/richData/rdrichvalue.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<rvData xmlns="http://schemas.microsoft.com/office/spreadsheetml/2017/richdata" count="${n}">${media.map((_, i) => `<rv s="0"><v>${i}</v><v>5</v><v>${X(`Diagram for shot ${images[i].name}`)}</v></rv>`).join('')}</rvData>` });
+    files.push({ name:'xl/richData/rdrichvaluestructure.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<rvStructures xmlns="http://schemas.microsoft.com/office/spreadsheetml/2017/richdata" count="1"><s t="_localImage"><k n="_rvRel:LocalImageIdentifier" t="i"/><k n="CalcOrigin" t="i"/><k n="Text" t="s"/></s></rvStructures>` });
+    files.push({ name:'xl/richData/richValueRel.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<richValueRels xmlns="http://schemas.microsoft.com/office/spreadsheetml/2022/richvaluerel" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${media.map((_, i) => `<rel r:id="rId${i+1}"/>`).join('')}</richValueRels>` });
+    files.push({ name:'xl/richData/_rels/richValueRel.xml.rels', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${media.map((_, i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${i+1}.png"/>`).join('')}</Relationships>` });
+    const flag = k => `<key name="${k}"><flag name="ExcludeFromCalcComparison" value="1"/></key>`;
+    files.push({ name:'xl/richData/rdRichValueTypes.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<rvTypesInfo xmlns="http://schemas.microsoft.com/office/spreadsheetml/2017/richdata2" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x" xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><global><keyFlags><key name="_Self"><flag name="ExcludeFromFile" value="1"/><flag name="ExcludeFromCalcComparison" value="1"/></key>${['_DisplayString','_Flags','_Format','_SubLabel','_Attribution','_Icon','_Display','_CanonicalPropertyNames','_ClassificationId'].map(flag).join('')}</keyFlags></global></rvTypesInfo>` });
+    ct.push(`<Override PartName="/xl/metadata.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml"/>`,
+      `<Override PartName="/xl/richData/rdRichValueTypes.xml" ContentType="application/vnd.ms-excel.rdrichvaluetypes+xml"/>`,
+      `<Override PartName="/xl/richData/rdrichvalue.xml" ContentType="application/vnd.ms-excel.rdrichvalue+xml"/>`,
+      `<Override PartName="/xl/richData/rdrichvaluestructure.xml" ContentType="application/vnd.ms-excel.rdrichvaluestructure+xml"/>`,
+      `<Override PartName="/xl/richData/richValueRel.xml" ContentType="application/vnd.ms-excel.richvaluerel+xml"/>`);
+    wbRels.push(`<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata" Target="metadata.xml"/>`,
+      `<Relationship Id="rId4" Type="http://schemas.microsoft.com/office/2022/10/relationships/richValueRel" Target="richData/richValueRel.xml"/>`,
+      `<Relationship Id="rId5" Type="http://schemas.microsoft.com/office/2017/06/relationships/rdRichValue" Target="richData/rdrichvalue.xml"/>`,
+      `<Relationship Id="rId6" Type="http://schemas.microsoft.com/office/2017/06/relationships/rdRichValueStructure" Target="richData/rdrichvaluestructure.xml"/>`,
+      `<Relationship Id="rId7" Type="http://schemas.microsoft.com/office/2017/06/relationships/rdRichValueTypes" Target="richData/rdRichValueTypes.xml"/>`);
+  } else if (media.length) {
+    // pictures over cells, each anchored inside its own cell ("move and size with cells")
+    const EMU = 9525, pad = 4 * EMU, w = IMG_W * EMU, h = IMG_H * EMU;
+    const anchors = images.map((im, i) => `<xdr:twoCellAnchor editAs="twoCell"><xdr:from><xdr:col>${im.col}</xdr:col><xdr:colOff>${pad}</xdr:colOff><xdr:row>${im.row-1}</xdr:row><xdr:rowOff>${pad}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${im.col}</xdr:col><xdr:colOff>${pad + w}</xdr:colOff><xdr:row>${im.row-1}</xdr:row><xdr:rowOff>${pad + h}</xdr:rowOff></xdr:to><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${i+2}" name="Diagram ${X(im.name)}" descr="Diagram for shot ${X(im.name)}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rId${i+1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`).join('');
+    files.push({ name:'xl/drawings/drawing1.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors}</xdr:wsDr>` });
+    files.push({ name:'xl/drawings/_rels/drawing1.xml.rels', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${media.map((_, i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${i+1}.png"/>`).join('')}</Relationships>` });
+    files.push({ name:'xl/worksheets/_rels/sheet1.xml.rels', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>` });
+    ct.push(`<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`);
+    sheetTail = `<drawing r:id="rId1"/>`;
+  }
+  files.push({ name:'xl/worksheets/sheet1.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet ${ns}><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:${lastCol}${rn}"/>
+<sheetViews><sheetView workbookViewId="0" zoomScale="90"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>
+<cols>${cols.map((c, i) => `<col min="${i+1}" max="${i+1}" width="${c[2]}" customWidth="1"/>`).join('')}</cols>
+<sheetData>${sheetRows.join('')}</sheetData>${merges.length ? `<mergeCells count="${merges.length}">${merges.map(m => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` : ''}
+<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>${sheetTail}</worksheet>` });
+  files.push({ name:'xl/workbook.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook ${ns}><sheets><sheet name="${sheetName}" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">'${sheetName}'!$1:$1</definedName></definedNames></workbook>` });
+  files.push({ name:'xl/_rels/workbook.xml.rels', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${wbRels.join('')}</Relationships>` });
+  files.push({ name:'xl/styles.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="12"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font></fonts>
+<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE8EAEE"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1B1F27"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FFD0D4DC"/></bottom><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="top"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf></cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>` });
+  const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  files.push({ name:'docProps/core.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${X(project.name)} — ${sheetName}</dc:title><dc:creator>Overhead</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>` });
+  files.push({ name:'docProps/app.xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Overhead</Application></Properties>` });
+  files.push({ name:'_rels/.rels', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>` });
+  files.unshift({ name:'[Content_Types].xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">${ct.join('')}</Types>` });
+  const blob = zipFiles(files, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  if (test) return test.out(blob);
+  download(`${safeName()} ${shoot ? 'shoot order' : 'shot list'}.xlsx`, blob);
+  toast(`Excel file ready — ${plural(rows.filter(r => r.kind === 'shot').length, 'shot')}`);
 }
 
 // ---------- PNG export ----------
